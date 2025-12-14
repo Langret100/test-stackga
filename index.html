@@ -13,22 +13,7 @@
       <div class="status" id="status">연결 준비…</div>
     </header>
 
-    <!-- 초대 정보(필요할 때만 표시) -->
-    <section class="panel compact" id="invite" hidden>
-      <div class="inviteRow">
-        <div class="inviteCol">
-          <div class="small">링크</div>
-          <div class="mono" id="inviteUrl"></div>
-          <button class="btn ghost" id="btnCopyUrl">링크 복사</button>
-        </div>
-        <div class="inviteCol">
-          <div class="small">QR용 문구(그대로 QR로 만들기)</div>
-          <div class="mono" id="qrText"></div>
-          <button class="btn ghost" id="btnCopyText">QR용 문구 복사</button>
-        </div>
-      </div>
-      <div class="small" id="inviteHint"></div>
-    </section>
+    <!-- 초대/QR UI 제거: 동일 주소 접속자 2명씩 자동 매칭 -->
 
     <section class="panel gamePanel" id="game">
       <div class="hud" id="hud">

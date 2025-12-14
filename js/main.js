@@ -3,7 +3,7 @@ import { StackGame, drawBoard, drawNext, COLS } from "./game.js";
 import { CpuController } from "./cpu.js";
 import { fitCanvases, initTouchControls } from "./touch.js";
 import {
-  buildInvite, createLobby, joinLobby, watchRoom,
+  joinLobby, watchRoom,
   roomRefs, setRoomState, publishMyState, subscribeOppState,
   pushEvent, subscribeEvents, tryCleanupRoom, hardDeleteRoom
 } from "./netplay.js";
@@ -12,12 +12,6 @@ const $ = (id)=>document.getElementById(id);
 
 const ui = {
   status: $("status"),
-  inviteSection: $("invite"),
-  inviteUrl: $("inviteUrl"),
-  qrText: $("qrText"),
-  btnCopyUrl: $("btnCopyUrl"),
-  btnCopyText: $("btnCopyText"),
-  inviteHint: $("inviteHint"),
 
   cvMe: $("cvMe"),
   cvOpp: $("cvOpp"),
@@ -48,15 +42,9 @@ function showOverlay(title, desc, {showCpuBtn=false}={}){
 }
 function hideOverlay(){ ui.overlay.classList.add("hidden"); }
 
-function copyText(t){
-  navigator.clipboard.writeText(t).catch(()=>{});
-}
-ui.btnCopyUrl?.addEventListener("click", ()=>copyText(ui.inviteUrl.textContent.trim()));
-ui.btnCopyText?.addEventListener("click", ()=>copyText(ui.qrText.textContent.trim()));
+// Restart = reload
 ui.btnRestart?.addEventListener("click", ()=>{
-  const u = new URL(location.href);
-  u.searchParams.delete("lobby");
-  location.href = u.origin + u.pathname;
+  location.reload();
 });
 
 // --- Controls
@@ -318,18 +306,17 @@ async function endGame(won){
 }
 
 // --- Online flow
-function qsLobby(){
-  const u = new URL(location.href);
-  return u.searchParams.get("lobby") || "";
-}
-
-function setInvite(lobbyId){
-  ui.inviteSection.hidden = false;
-  const url = location.origin + location.pathname;
-  const inv = buildInvite(url, lobbyId);
-  safeSetText(ui.inviteUrl, inv.full);
-  safeSetText(ui.qrText, inv.qrText);
-  safeSetText(ui.inviteHint, "QR은 ‘QR용 문구’를 그대로 넣어 만들면, 스캔 시 대화방에 문구+링크가 그대로 올라갑니다.");
+// 동일 주소(도메인+경로)로 접속한 사람들을 2명씩 자동 매칭
+function stableLobbyId(){
+  const s = location.origin + location.pathname;
+  // FNV-1a 32-bit
+  let h = 0x811c9dc5;
+  for(let i=0;i<s.length;i++){
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  // base36, short
+  return "stackga_" + (h>>>0).toString(36);
 }
 
 async function enterRoom(rid, joined){
@@ -435,18 +422,8 @@ async function boot(){
     return;
   }
 
-  const lobby = qsLobby();
   try{
-    let lobbyId = lobby;
-    if(!lobbyId){
-      const c = await createLobby({db, api});
-      lobbyId = c.lobbyId;
-      setInvite(lobbyId);
-      // URL에 lobby 파라미터 붙여서 갱신 (동일 링크 공유)
-      const u = new URL(location.href);
-      u.searchParams.set("lobby", lobbyId);
-      history.replaceState({}, "", u.toString());
-    }
+    const lobbyId = stableLobbyId();
 
     setStatus("연결 중…");
     mode = "online";
