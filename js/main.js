@@ -30,6 +30,32 @@ const ui = {
 };
 
 const boardColEl = document.getElementById("boardCol");
+const playShellEl = document.getElementById("playShell");
+
+// --- Micro FX (shake + flash)
+function restartAnimClass(el, cls){
+  if(!el) return;
+  el.classList.remove(cls);
+  // force reflow
+  void el.offsetWidth;
+  el.classList.add(cls);
+}
+
+function shake(kind){
+  if(!playShellEl) return;
+  const cls = kind === "strong" ? "shake-strong" : "shake-soft";
+  playShellEl.classList.remove("shake-soft","shake-strong");
+  restartAnimClass(playShellEl, cls);
+  setTimeout(()=>{ playShellEl.classList.remove(cls); }, kind === "strong" ? 280 : 180);
+}
+
+function flash(kind){
+  if(!boardColEl) return;
+  const cls = kind === "bad" ? "flash-bad" : "flash-good";
+  boardColEl.classList.remove("flash-good","flash-bad");
+  restartAnimClass(boardColEl, cls);
+  setTimeout(()=>{ boardColEl.classList.remove(cls); }, 220);
+}
 
 function safeSetText(el, t){ if(el) el.textContent = t; }
 function setStatus(s){ safeSetText(ui.status, s); }
@@ -183,7 +209,12 @@ function startLoop(){
       if(c2>0){
         cpuGame.lastCleared = 0;
         const atk = linesToAttack(c2);
-        if(atk) applyAttackTo(meGame, atk);
+        if(atk){
+          applyAttackTo(meGame, atk);
+          // 받는 쪽 이펙트
+          shake("strong");
+          flash("bad");
+        }
       }
     }
 
@@ -194,6 +225,9 @@ function startLoop(){
     if(c>0){
       meGame.lastCleared = 0;
       const atk = linesToAttack(c);
+      // 줄 지울 때마다 이펙트
+      shake("soft");
+      flash("good");
       if(atk){
         if(mode==="online" && oppPid){
           pushEvent({ api, eventsRef, event:{ from: pid, kind:"attack", payload: atk } }).catch(()=>{});
@@ -403,6 +437,9 @@ function onEventRecv({key, ev}){
   seenEvents.add(key);
   if(ev.kind === "attack"){
     applyAttackTo(meGame, ev.payload || {});
+    // 공격 들어올 때 이펙트
+    shake("strong");
+    flash("bad");
   }
   // consume/delete immediately to avoid logs
   try{
