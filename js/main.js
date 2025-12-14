@@ -1,4 +1,5 @@
 import { initFirebase } from "./firebase.js";
+import { createAudio } from "./audio.js";
 import { StackGame, drawBoard, drawNext, COLS } from "./game.js";
 import { CpuController } from "./cpu.js";
 import { fitCanvases, initTouchControls } from "./touch.js";
@@ -11,8 +12,6 @@ import {
 const $ = (id)=>document.getElementById(id);
 
 const ui = {
-  status: $("status"),
-
   cvMe: $("cvMe"),
   cvOpp: $("cvOpp"),
   cvNext: $("cvNext"),
@@ -27,7 +26,25 @@ const ui = {
   overlayDesc: $("overlayDesc"),
   btnStartCpu: $("btnStartCpu"),
   btnRestart: $("btnRestart"),
+  btnSound: $("btnSound"),
+  btnFull: $("btnFull"),
 };
+
+// --- Audio (BGM + SFX)
+const audio = createAudio({ musicUrl: "./assets/arcade-music.mp3" });
+function syncSoundIcon(){
+  if(!ui.btnSound) return;
+  ui.btnSound.textContent = audio.muted ? "🔇" : "🔊";
+}
+syncSoundIcon();
+ui.btnSound?.addEventListener("click", ()=>{
+  audio.gestureStart();
+  audio.toggleMuted();
+  syncSoundIcon();
+});
+// start audio on first user gesture
+window.addEventListener("pointerdown", ()=>audio.gestureStart(), { once:true, passive:true });
+window.addEventListener("keydown", ()=>audio.gestureStart(), { once:true });
 
 const boardColEl = document.getElementById("boardCol");
 const playShellEl = document.getElementById("playShell");
@@ -60,6 +77,20 @@ function flash(kind){
 function safeSetText(el, t){ if(el) el.textContent = t; }
 function setStatus(s){ safeSetText(ui.status, s); }
 
+// Fullscreen toggle (best-effort; iOS Safari may ignore)
+function toggleFullscreen(){
+  const doc = document;
+  const el = document.documentElement;
+  try{
+    if(!doc.fullscreenElement){
+      el.requestFullscreen?.();
+    }else{
+      doc.exitFullscreen?.();
+    }
+  }catch{}
+}
+ui.btnFull?.addEventListener("click", toggleFullscreen);
+
 function showOverlay(title, desc, {showCpuBtn=false}={}){
   safeSetText(ui.overlayTitle, title);
   safeSetText(ui.overlayDesc, desc || "");
@@ -70,6 +101,7 @@ function hideOverlay(){ ui.overlay.classList.add("hidden"); }
 
 // Restart = reload
 ui.btnRestart?.addEventListener("click", ()=>{
+  audio.gestureStart();
   location.reload();
 });
 
@@ -77,17 +109,27 @@ ui.btnRestart?.addEventListener("click", ()=>{
 function performAction(action){
   if(!meGame || meGame.dead || !started) return;
 
+  // Audio starts only after a gesture; this call is safe even if blocked.
+  audio.gestureStart();
+
   const now = Date.now();
   const invert = meGame._isInvertActive(now);
   const left = invert ? 1 : -1;
   const right = invert ? -1 : 1;
 
-  if(action==="left") meGame.move(left);
-  else if(action==="right") meGame.move(right);
-  else if(action==="down") meGame.softDrop();
-  else if(action==="rotate") meGame.rotate(1);
-  else if(action==="drop") meGame.hardDrop();
-  else if(action==="pause") meGame.paused = !meGame.paused;
+  if(action==="left"){
+    if(meGame.move(left)) audio.sfx("move");
+  }else if(action==="right"){
+    if(meGame.move(right)) audio.sfx("move");
+  }else if(action==="down"){
+    meGame.softDrop(); audio.sfx("soft");
+  }else if(action==="rotate"){
+    if(meGame.rotate(1)) audio.sfx("rotate");
+  }else if(action==="drop"){
+    meGame.hardDrop(); audio.sfx("hard");
+  }else if(action==="pause"){
+    meGame.paused = !meGame.paused;
+  }
 }
 
 function onKey(e){
@@ -214,6 +256,7 @@ function startLoop(){
           // 받는 쪽 이펙트
           shake("strong");
           flash("bad");
+          audio.sfx("attackHit");
         }
       }
     }
@@ -228,7 +271,9 @@ function startLoop(){
       // 줄 지울 때마다 이펙트
       shake("soft");
       flash("good");
+      audio.sfx("clear");
       if(atk){
+        audio.sfx("attackSend");
         if(mode==="online" && oppPid){
           pushEvent({ api, eventsRef, event:{ from: pid, kind:"attack", payload: atk } }).catch(()=>{});
         }else if(mode==="cpu" && cpuGame){
@@ -285,6 +330,7 @@ function startCpuMode(reason){
   // online에서 PC로 전환 시: 방 점유를 풀어 다음 사용자 매칭이 막히지 않도록 best-effort 정리
   if(mode==="online" && api && db && roomId && pid && playersRef && metaRef){
     try{ api.remove(api.child(playersRef, pid)).catch(()=>{}); }catch{}
+    try{ if(statesRef) api.remove(api.child(statesRef, pid)).catch(()=>{}); }catch{}
     try{
       api.runTransaction(metaRef, (m)=>{
         if(!m || !m.joined) return m;
@@ -316,6 +362,7 @@ async function endGame(won){
   cancelAnimationFrame(raf);
 
   const title = won ? "승리!" : "패배…";
+  audio.sfx(won ? "win" : "lose");
   showOverlay(title, "", {showCpuBtn:false});
 
   if(mode==="online" && api && metaRef && pid){
@@ -335,7 +382,7 @@ async function endGame(won){
     if(cleanupTimer) clearTimeout(cleanupTimer);
     cleanupTimer = setTimeout(()=>{
       hardDeleteRoom({db, api, roomId}).catch(()=>{});
-    }, 1500);
+    }, 350);
   }
 }
 
@@ -419,7 +466,7 @@ function onRoomUpdate(room){
     }
     // cleanup soon
     if(cleanupTimer) clearTimeout(cleanupTimer);
-    cleanupTimer = setTimeout(()=>{ hardDeleteRoom({db, api, roomId}).catch(()=>{}); }, 1500);
+    cleanupTimer = setTimeout(()=>{ hardDeleteRoom({db, api, roomId}).catch(()=>{}); }, 350);
   }
 }
 
@@ -440,6 +487,7 @@ function onEventRecv({key, ev}){
     // 공격 들어올 때 이펙트
     shake("strong");
     flash("bad");
+    audio.sfx("attackHit");
   }
   // consume/delete immediately to avoid logs
   try{
@@ -480,6 +528,9 @@ window.addEventListener("beforeunload", ()=>{
   try{ if(hbTimer) clearInterval(hbTimer); }catch{}
   try{ clearWait(); }catch{}
   if(mode==="online" && db && api && roomId){
+    // 최소한 내 흔적(players/states)은 즉시 제거(best-effort)
+    try{ if(playersRef && pid) api.remove(api.child(playersRef, pid)).catch(()=>{}); }catch{}
+    try{ if(statesRef && pid) api.remove(api.child(statesRef, pid)).catch(()=>{}); }catch{}
     tryCleanupRoom({db, api, roomId}).catch(()=>{});
   }
 });

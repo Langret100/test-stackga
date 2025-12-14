@@ -26,16 +26,7 @@ body{
   flex-direction:column;
 }
 
-.topbar{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  padding:10px 12px;
-  background:rgba(255,255,255,.92);
-  border-bottom:1px solid var(--border);
-}
-.brand{font-weight:900;letter-spacing:.2px}
-.status{font-size:13px;color:var(--muted)}
+/* (상단 타이틀/연결바 제거됨) */
 
 .panel{padding:0;margin:0}
 .panel.compact{padding:10px 12px;border-bottom:1px solid var(--border);background:rgba(255,255,255,.92)}
@@ -49,7 +40,32 @@ body{
 .row{display:flex;gap:10px;margin-top:10px;justify-content:center}
 
 .gamePanel{flex:1;display:flex;flex-direction:column;min-height:0}
-.hud{display:flex;gap:14px;flex-wrap:wrap;align-items:center;padding:10px 12px;color:var(--muted);border-bottom:1px solid var(--border);background:rgba(255,255,255,.92)}
+.hud{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  padding:10px 12px;
+  color:var(--muted);
+  border-bottom:1px solid var(--border);
+  background:rgba(255,255,255,.92);
+}
+.hudLeft{display:flex;gap:14px;flex-wrap:wrap;align-items:center}
+
+.hudRight{display:flex;gap:10px;align-items:center}
+
+.iconBtn{
+  width:40px;
+  height:34px;
+  border-radius:12px;
+  border:1px solid var(--border);
+  background:rgba(255,255,255,.92);
+  color:var(--ink);
+  font-weight:900;
+  cursor:pointer;
+  box-shadow:var(--shadow);
+}
+.iconBtn:active{transform:translateY(1px)}
 
 /* Core play area: left board + right column */
 .playShell{

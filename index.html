@@ -8,19 +8,20 @@
 </head>
 <body>
   <div class="wrap">
-    <header class="topbar">
-      <div class="brand">쌓기게임</div>
-      <div class="status" id="status">연결 준비…</div>
-    </header>
-
-    <!-- 초대/QR UI 제거: 동일 주소 접속자 2명씩 자동 매칭 -->
+    <!-- 상단 타이틀/연결바 제거: 게임 화면만 -->
 
     <section class="panel gamePanel" id="game">
       <div class="hud" id="hud">
-        <div>점수: <b id="score">0</b></div>
-        <div>레벨: <b id="level">1</b></div>
-        <div>상태: <b id="effect">-</b></div>
-        <div>모드: <b id="mode">-</b></div>
+        <div class="hudLeft">
+          <div>점수: <b id="score">0</b></div>
+          <div>레벨: <b id="level">1</b></div>
+          <div>상태: <b id="effect">-</b></div>
+          <div>모드: <b id="mode">-</b></div>
+        </div>
+        <div class="hudRight">
+        <button class="iconBtn" id="btnSound" aria-label="소리">🔊</button>
+        <button class="iconBtn" id="btnFull" aria-label="전체화면">⛶</button>
+      </div>
       </div>
 
       <div class="playShell" id="playShell">

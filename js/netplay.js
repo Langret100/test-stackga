@@ -71,6 +71,7 @@ export async function joinRoom({db, api, roomId, name, seed}){
   const metaRef = api.ref(db, META_PATH(roomId));
   const playersRef = api.ref(db, PLAYERS_PATH(roomId));
   const playerRef = api.ref(db, `${PLAYERS_PATH(roomId)}/${pid}`);
+  const myStateRef = api.ref(db, `${STATES_PATH(roomId)}/${pid}`);
 
   const randomSeed = (seed ?? ((Math.random()*2**32)>>>0)) >>> 0;
 
@@ -133,6 +134,7 @@ export async function joinRoom({db, api, roomId, name, seed}){
 
   // Disconnect cleanup
   try{ await api.onDisconnect(playerRef).remove(); }catch{}
+  try{ await api.onDisconnect(myStateRef).remove(); }catch{}
 
   // heartbeat
   const hbRef = api.ref(db, `${PLAYERS_PATH(roomId)}/${pid}/lastSeen`);
@@ -199,7 +201,9 @@ export async function setRoomState({api, metaRef}, state){
 }
 
 export async function publishMyState({api, statesRef, pid, state}){
-  await api.set(api.ref(statesRef, pid), { ...state, t: Date.now() });
+  // NOTE: firebase modular ref()는 (db, path) 형태가 기본이라
+  // Reference+child는 child()를 사용합니다.
+  await api.set(api.child(statesRef, pid), { ...state, t: Date.now() });
 }
 
 export function subscribeOppState({api, statesRef, pid, onOpp}){
