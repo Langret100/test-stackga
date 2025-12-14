@@ -282,3 +282,75 @@ export async function tryCleanupRoom({db, api, roomId}){
 
   return false;
 }
+
+
+/**
+ * 슬롯 해제: 로비 mm/slots/{slot} 제거 + (가능하면) 로비 mm 자체도 비우기
+ */
+export async function releaseSlot({db, api, lobbyId, slot}){
+  if(lobbyId===undefined || lobbyId===null) return;
+  if(slot===undefined || slot===null) return;
+  await api.remove(api.ref(db, SLOT_PATH(lobbyId, slot))).catch(()=>{});
+  // prune mm if all slots empty
+  try{
+    const slotsRef = api.ref(db, `${LOBBY_MM_PATH(lobbyId)}/slots`);
+    const s = await api.get(slotsRef);
+    const v = s.exists()? (s.val()||{}) : {};
+    const any = Object.keys(v).some(k=>v[k] && v[k].roomKey);
+    if(!any){
+      await api.remove(api.ref(db, LOBBY_MM_PATH(lobbyId))).catch(()=>{});
+    }
+  }catch{}
+}
+
+/**
+ * 로비 슬롯 정리: 비어있는/죽은 방을 삭제하고 슬롯도 비웁니다 (best-effort)
+ */
+export async function sweepLobbySlots({db, api, lobbyId, maxTeams=10}){
+  const slotsRef = api.ref(db, `${LOBBY_MM_PATH(lobbyId)}/slots`);
+  const snap = await api.get(slotsRef);
+  const slots = snap.exists()? (snap.val()||{}) : {};
+  const now = Date.now();
+
+  for(let slot=0; slot<maxTeams; slot++){
+    const sv = slots?.[slot];
+    const roomKey = sv?.roomKey;
+    if(!roomKey) continue;
+
+    // Check players
+    let players = null;
+    try{
+      const ps = await api.get(api.ref(db, PLAYERS_PATH(roomKey)));
+      players = ps.exists()? (ps.val()||{}) : {};
+    }catch{ players = null; }
+
+    const keys = players ? Object.keys(players) : [];
+    // determine liveness by heartbeat
+    let live = 0;
+    if(players){
+      for(const k of keys){
+        const last = players[k]?.lastSeen || 0;
+        if(now - last <= 65000) live++;
+      }
+    }
+    const assignedAt = sv?.lastAssignedAt || sv?.createdAt || 0;
+    const stale = assignedAt && (now - assignedAt > 120000); // 2min
+    const empty = !players || keys.length===0 || live===0;
+
+    if(empty && stale){
+      // delete room children + clear slot
+      await hardDeleteRoom({db, api, roomId: roomKey}).catch(()=>{});
+      await api.remove(api.ref(db, SLOT_PATH(lobbyId, slot))).catch(()=>{});
+    }
+  }
+
+  // prune mm if nothing left
+  try{
+    const snap2 = await api.get(slotsRef);
+    const v2 = snap2.exists()? (snap2.val()||{}) : {};
+    const any = Object.keys(v2).some(k=>v2[k] && v2[k].roomKey);
+    if(!any){
+      await api.remove(api.ref(db, LOBBY_MM_PATH(lobbyId))).catch(()=>{});
+    }
+  }catch{}
+}

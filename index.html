@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <title>쌓기게임</title>
+  <link rel="icon" href="data:," />
   <link rel="stylesheet" href="./css/game.css" />
 </head>
 <body>
@@ -26,7 +27,7 @@
 
       <div class="playShell" id="playShell">
         <!-- 내 게임 화면: 좌측에 딱 붙음 -->
-        <div class="boardCol" id="boardCol" aria-label="me">
+        <div class="cardBox boardCard" id="boardCol" aria-label="me">
           <canvas id="cvMe" width="360" height="720"></canvas>
         </div>
 
@@ -38,6 +39,9 @@
           </div>
           <div class="cardBox oppCard" id="oppCard" aria-label="opponent">
             <canvas id="cvOpp" width="120" height="240"></canvas>
+          </div>
+          <div class="cardBox comboCard" id="comboCard" aria-label="combo">
+            <div class="comboBubble" id="comboBubble"><span class="comboLabel">콤보</span><span id="combo">0</span><span class="comboSpark">✨</span></div>
           </div>
         </div>
 

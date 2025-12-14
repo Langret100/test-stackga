@@ -20,56 +20,90 @@ export function fitCanvases(cvMe, cvOpp, cvNext){
 
   const dpr = Math.min(2, window.devicePixelRatio || 1);
 
-  // 실제 레이아웃 폭/높이를 DOM에서 측정
+  // DOM measurements (HUD is outside playShell)
   const playShell = document.getElementById('playShell');
   const boardCol = document.getElementById('boardCol');
-  const sideCol = document.getElementById('sideCol');
+  const sideCol  = document.getElementById('sideCol');
   const nextCard = document.getElementById('nextCard');
-  const oppCard = document.getElementById('oppCard');
+  const oppCard  = document.getElementById('oppCard');
+  const comboCard = document.getElementById('comboCard');
 
-  const shellW = playShell?.clientWidth || (window.visualViewport?.width || window.innerWidth || 360);
+  const shellW = playShell?.clientWidth  || (window.visualViewport?.width  || window.innerWidth  || 360);
   const shellH = playShell?.clientHeight || (window.visualViewport?.height || window.innerHeight || 640);
 
-  const sideW = sideCol?.clientWidth || clamp(Math.floor(shellW * 0.28), 112, 170);
-  const boardW = boardCol?.clientWidth || Math.max(200, shellW - sideW - 10);
+  const sideW  = sideCol?.clientWidth || clamp(Math.floor(shellW * 0.28), 112, 170);
+  const gapW = 10;
+  const boardPad = 20; // boardCard padding approx (10*2)
+  const boardW = Math.max(180, shellW - sideW - gapW - boardPad);
 
-  // 보드가 세로로 꽉 차도록 (HUD는 이미 playShell 밖)
+  // ---- Main board (10x20)
   const maxH = Math.max(240, shellH);
   let cell = Math.floor(Math.min(boardW / COLS, maxH / ROWS));
-  cell = clamp(cell, 14, 48);
+  cell = clamp(cell, 14, 52);
 
   const meW = cell * COLS;
   const meH = cell * ROWS;
-  cvMe.width = Math.floor(meW * dpr);
+  cvMe.width  = Math.floor(meW * dpr);
   cvMe.height = Math.floor(meH * dpr);
-  cvMe.style.width = meW + 'px';
+  cvMe.style.width  = meW + 'px';
   cvMe.style.height = meH + 'px';
 
-  // NEXT: 4x4, 우측 상단 카드 폭에 맞춤
-  const nextInnerW = (nextCard?.clientWidth || sideW) - 16;
-  let nextCell = Math.floor(nextInnerW / 4);
-  nextCell = clamp(nextCell, 10, 18);
+  // ---- Side column: force Next + Opp + Combo to fit in the visible height (no clipping)
+  const sideH = sideCol?.clientHeight || shellH;
+  const gap = 10;
+  const pad = 16; // card padding (8*2)
+
+  // Combo takes a small fixed chunk at the bottom.
+  let comboH = clamp(Math.floor(sideH * 0.14), 48, 72);
+
+  // Allocate a reasonable Next box height, but never steal too much from Opp.
+  const minOppH = 140;
+  let nextInner = Math.min((sideW - pad), Math.floor(sideH * 0.22));
+  nextInner = clamp(nextInner, 56, 120);
+
+  // Ensure we always have room for Opp + Combo.
+  const minTotal = (minOppH + pad) + comboH + gap*2 + (nextInner + pad);
+  if(minTotal > sideH){
+    // shrink Next first, then combo if needed
+    const over = minTotal - sideH;
+    nextInner = Math.max(56, nextInner - over);
+    if((minOppH + pad) + comboH + gap*2 + (nextInner + pad) > sideH){
+      comboH = Math.max(44, comboH - (over*0.6));
+    }
+  }
+
+  const nextH = Math.max(56 + pad, nextInner + pad);
+  const oppH  = Math.max(minOppH + pad, sideH - nextH - comboH - gap*2);
+
+  if(nextCard) nextCard.style.height = nextH + 'px';
+  if(oppCard)  oppCard.style.height  = oppH + 'px';
+  if(comboCard) comboCard.style.height = comboH + 'px';
+
+
+  // NEXT: 4x4, fit to Next box inner size (square)
+  const nextCell = clamp(Math.floor(Math.min(nextInner, nextInner) / 4), 8, 20);
   const nextW = nextCell * 4;
-  const nextH = nextCell * 4;
-  cvNext.width = Math.floor(nextW * dpr);
-  cvNext.height = Math.floor(nextH * dpr);
-  cvNext.style.width = '100%';
-  cvNext.style.height = 'auto';
+  const nextHpx = nextCell * 4;
+  cvNext.width  = Math.floor(nextW * dpr);
+  cvNext.height = Math.floor(nextHpx * dpr);
+  cvNext.style.width  = '100%';
+  cvNext.style.height = '100%';
 
-  // 상대 보드: 남은 높이/폭에 맞춰 10x20
-  const oppInnerW = (oppCard?.clientWidth || sideW) - 16;
-  const usedH = (nextCard?.offsetHeight || 0) + 10; // gap
-  const oppMaxH = Math.max(180, shellH - usedH);
-
-  let oppCell = Math.floor(Math.min(oppInnerW / COLS, oppMaxH / ROWS));
-  oppCell = clamp(oppCell, 6, 20);
+  // Opp: 10x20, fit to remaining box
+  const oppInnerW = Math.max(64, (sideW - pad));
+  const oppInnerH = Math.max(minOppH, (oppH - pad));
+  let oppCell = Math.floor(Math.min(oppInnerW / COLS, oppInnerH / ROWS));
+  oppCell = clamp(oppCell, 6, 24);
   const oppW = oppCell * COLS;
-  const oppH = oppCell * ROWS;
-  cvOpp.width = Math.floor(oppW * dpr);
-  cvOpp.height = Math.floor(oppH * dpr);
-  cvOpp.style.width = '100%';
-  cvOpp.style.height = 'auto';
+  const oppHpx = oppCell * ROWS;
+
+  cvOpp.width  = Math.floor(oppW * dpr);
+  cvOpp.height = Math.floor(oppHpx * dpr);
+  cvOpp.style.width  = '100%';
+  cvOpp.style.height = '100%';
 }
+
+
 
 export function initTouchControls(canvas, onAction){
   if(!canvas || !onAction) return;

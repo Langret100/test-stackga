@@ -103,8 +103,8 @@ export function createAudio({ musicUrl } = {}) {
   }
 
   function sfx(name) {
-    // If user never interacted, try to start (may be ignored until gesture)
-    if (!started) gestureStart();
+    // Ignore SFX until the first user gesture has started audio
+    if (!started) return;
     if (muted) return;
 
     switch (name) {

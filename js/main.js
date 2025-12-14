@@ -6,7 +6,8 @@ import { fitCanvases, initTouchControls } from "./touch.js";
 import {
   joinLobby, watchRoom,
   roomRefs, setRoomState, publishMyState, subscribeOppState,
-  pushEvent, subscribeEvents, tryCleanupRoom, hardDeleteRoom
+  pushEvent, subscribeEvents, tryCleanupRoom, hardDeleteRoom,
+  releaseSlot, sweepLobbySlots
 } from "./netplay.js";
 
 const $ = (id)=>document.getElementById(id);
@@ -20,6 +21,9 @@ const ui = {
   level: $("level"),
   effect: $("effect"),
   mode: $("mode"),
+
+  combo: $("combo"),
+  comboBubble: $("comboBubble"),
 
   overlay: $("overlay"),
   overlayTitle: $("overlayTitle"),
@@ -72,6 +76,16 @@ function flash(kind){
   boardColEl.classList.remove("flash-good","flash-bad");
   restartAnimClass(boardColEl, cls);
   setTimeout(()=>{ boardColEl.classList.remove(cls); }, 220);
+}
+
+function bumpCombo(add){
+  if(!ui.combo || !ui.comboBubble) return;
+  comboLines = Math.max(0, comboLines + (add||0));
+  ui.combo.textContent = String(comboLines);
+  ui.comboBubble.classList.remove('comboPop');
+  // force reflow for restart animation
+  void ui.comboBubble.offsetWidth;
+  ui.comboBubble.classList.add('comboPop');
 }
 
 function safeSetText(el, t){ if(el) el.textContent = t; }
@@ -170,6 +184,9 @@ let fb=null, db=null, api=null;
 let mode = "init"; // online|cpu
 let roomId="", pid="", oppPid="";
 let hbTimer=null;
+let lobbyId="";
+let mySlot=null;
+let comboLines=0;
 let roomUnsub=null, oppUnsub=null, evUnsub=null;
 let metaRef=null, playersRef=null, statesRef=null, eventsRef=null;
 
@@ -246,6 +263,8 @@ function startLoop(){
       cpuCtl?.update(dt);
       cpuGame.tick(dt);
       oppLastBoard = cpuGame.snapshot();
+  comboLines = 0;
+  bumpCombo(0);
 
       const c2 = cpuGame.lastCleared || 0;
       if(c2>0){
@@ -268,6 +287,7 @@ function startLoop(){
     if(c>0){
       meGame.lastCleared = 0;
       const atk = linesToAttack(c);
+      bumpCombo(c);
       // 줄 지울 때마다 이펙트
       shake("soft");
       flash("good");
@@ -352,6 +372,8 @@ function startCpuMode(reason){
   cpuGame = new StackGame((Math.random()*2**32)>>>0);
   cpuCtl = new CpuController(cpuGame);
   oppLastBoard = cpuGame.snapshot();
+  comboLines = 0;
+  bumpCombo(0);
   safeSetText(ui.mode, "PC");
   startLoop();
 }
@@ -382,6 +404,7 @@ async function endGame(won){
     if(cleanupTimer) clearTimeout(cleanupTimer);
     cleanupTimer = setTimeout(()=>{
       hardDeleteRoom({db, api, roomId}).catch(()=>{});
+      if(lobbyId && mySlot!==null){ releaseSlot({db, api, lobbyId, slot: mySlot}).catch(()=>{}); }
     }, 350);
   }
 }
@@ -448,6 +471,8 @@ function onRoomUpdate(room){
 
     meGame = new StackGame((meta.seed>>>0) || 1);
     oppLastBoard = null;
+    comboLines = 0;
+    bumpCombo(0);
     seenEvents.clear();
 
     oppUnsub?.();
@@ -508,14 +533,19 @@ async function boot(){
   }
 
   try{
-    const lobbyId = stableLobbyId();
+    lobbyId = stableLobbyId();
+    // sweep stale rooms/slots (best-effort)
+    try{ await sweepLobbySlots({db, api, lobbyId, maxTeams: 10}); }catch{}
 
     setStatus("연결 중…");
     mode = "online";
     safeSetText(ui.mode, "온라인");
 
     const joined = await joinLobby({db, api, lobbyId, name: "Player", maxTeams: 10});
+    mySlot = joined.slot;
     await enterRoom(joined.roomId, joined);
+    // periodic sweep so crashed sessions do not leave data behind
+    setInterval(()=>{ try{ sweepLobbySlots({db, api, lobbyId, maxTeams:10}).catch(()=>{}); }catch{} }, 20000);
 
   }catch(e){
     // rules/설정 오류거나 10팀 가득이면 PC로
@@ -532,6 +562,7 @@ window.addEventListener("beforeunload", ()=>{
     try{ if(playersRef && pid) api.remove(api.child(playersRef, pid)).catch(()=>{}); }catch{}
     try{ if(statesRef && pid) api.remove(api.child(statesRef, pid)).catch(()=>{}); }catch{}
     tryCleanupRoom({db, api, roomId}).catch(()=>{});
+    try{ if(lobbyId && mySlot!==null) releaseSlot({db, api, lobbyId, slot: mySlot}).catch(()=>{}); }catch{}
   }
 });
 
