@@ -72,7 +72,7 @@ body{
   position:relative;
   flex:1;
   display:flex;
-  gap:10px;
+  gap:8px;
   /* no left/right margins: board sticks to the left edge */
   padding:6px 0 calc(6px + env(safe-area-inset-bottom)) 0;
   min-height:0;
@@ -87,10 +87,16 @@ body{
 }
 
 .sideCol{
-  flex:0 0 clamp(112px, 28vw, 170px);
+  /* slightly narrower on mobile so the main board can grow taller (less blank below) */
+  flex:0 0 clamp(100px, 23vw, 164px);
   display:flex;
   flex-direction:column;
   gap:10px;
+}
+
+@media (max-width: 480px){
+  .sideCol{ flex:0 0 92px; }
+  .hudLeft{ gap:10px; }
 }
 
 .cardBox{
@@ -119,10 +125,11 @@ canvas{
   border-radius:14px;
 }
 
-/* Next/opp: JS sets card heights so canvases can fill without clipping */
+/* Next/opp: maintain correct aspect ratios (no vertical stretch) */
 .nextCard{flex:0 0 auto}
-.oppCard{flex:1 1 auto; min-height:0}
-.nextCard canvas, .oppCard canvas{width:100%;height:100%}
+.oppCard{flex:0 0 auto}
+.nextCard canvas{width:100%;height:100%}
+.oppCard canvas{width:100%;height:auto;}
 
 .overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(15,23,42,.35);backdrop-filter:blur(2px)}
 .overlayCard{width:min(420px,92%);padding:16px;border-radius:18px;background:rgba(255,255,255,.95);border:1px solid rgba(15,23,42,.18);text-align:center;box-shadow:0 18px 44px rgba(15,23,42,.18)}
@@ -167,33 +174,30 @@ canvas{
 }
 .boardCard canvas{ border-radius:14px; }
 
-/* Combo card */
-.comboCard{
-  flex:0 0 auto;
-  height:56px;
+/* Combo (no card): centered text in the empty space under opponent */
+.comboArea{
+  flex:1 1 auto;
+  min-height:56px;
   display:flex;
+  flex-direction:column;
   align-items:center;
   justify-content:center;
-  padding:8px;
-}
-.comboBubble{
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  gap:6px;
-  width:100%;
-  height:100%;
-  border-radius:14px;
-  background:rgba(255,245,214,.92);
-  border:1px solid rgba(245,158,11,.28);
-  color:#8a4b00;
-  font-weight:900;
-  letter-spacing:.2px;
   user-select:none;
+  color:#8a4b00;
+  padding:6px 0;
 }
-.comboLabel{font-size:12px; opacity:.85;}
-#combo{font-size:22px; line-height:1;}
-.comboSpark{font-size:16px; transform:translateY(-1px);}
+.comboNum{
+  font-weight:1000;
+  font-size:34px;
+  line-height:1;
+  letter-spacing:-.8px;
+}
+.comboTxt{
+  font-weight:900;
+  font-size:14px;
+  opacity:.85;
+  margin-top:2px;
+}
 .comboPop{animation:comboPop .22s ease-out;}
 @keyframes comboPop{
   0%{transform:scale(.92)}

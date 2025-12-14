@@ -26,20 +26,19 @@ export function fitCanvases(cvMe, cvOpp, cvNext){
   const sideCol  = document.getElementById('sideCol');
   const nextCard = document.getElementById('nextCard');
   const oppCard  = document.getElementById('oppCard');
-  const comboCard = document.getElementById('comboCard');
+  const comboArea = document.getElementById('comboArea');
 
   const shellW = playShell?.clientWidth  || (window.visualViewport?.width  || window.innerWidth  || 360);
   const shellH = playShell?.clientHeight || (window.visualViewport?.height || window.innerHeight || 640);
 
-  const sideW  = sideCol?.clientWidth || clamp(Math.floor(shellW * 0.28), 112, 170);
-  const gapW = 10;
-  const boardPad = 20; // boardCard padding approx (10*2)
-  const boardW = Math.max(180, shellW - sideW - gapW - boardPad);
+  // Use actual board card inner size so we can maximize board height (avoid big blank under the board)
+  const boardCard = document.getElementById('boardCol');
+  const boardInnerW = Math.max(180, (boardCard?.clientWidth || (shellW*0.7)) - 20);
+  const boardInnerH = Math.max(260, (boardCard?.clientHeight || shellH) - 20);
 
   // ---- Main board (10x20)
-  const maxH = Math.max(240, shellH);
-  let cell = Math.floor(Math.min(boardW / COLS, maxH / ROWS));
-  cell = clamp(cell, 14, 52);
+  let cell = Math.floor(Math.min(boardInnerW / COLS, boardInnerH / ROWS));
+  cell = clamp(cell, 14, 56);
 
   const meW = cell * COLS;
   const meH = cell * ROWS;
@@ -48,36 +47,32 @@ export function fitCanvases(cvMe, cvOpp, cvNext){
   cvMe.style.width  = meW + 'px';
   cvMe.style.height = meH + 'px';
 
-  // ---- Side column: force Next + Opp + Combo to fit in the visible height (no clipping)
+  // ---- Side column: Next + Opp(10x20, no stretch) + Combo text
+  const sideW  = sideCol?.clientWidth || clamp(Math.floor(shellW * 0.24), 104, 168);
   const sideH = sideCol?.clientHeight || shellH;
   const gap = 10;
   const pad = 16; // card padding (8*2)
 
-  // Combo takes a small fixed chunk at the bottom.
-  let comboH = clamp(Math.floor(sideH * 0.14), 48, 72);
+  const comboMinH = 64;
+  let nextInner = clamp(Math.min((sideW - pad), Math.floor(sideH * 0.22)), 56, 120);
+  const nextCardH = nextInner + pad;
 
-  // Allocate a reasonable Next box height, but never steal too much from Opp.
-  const minOppH = 140;
-  let nextInner = Math.min((sideW - pad), Math.floor(sideH * 0.22));
-  nextInner = clamp(nextInner, 56, 120);
+  // Remaining height after Next (reserve space for combo text)
+  const remain = Math.max(160, sideH - nextCardH - gap);
+  const oppInnerW = Math.max(64, (sideW - pad));
+  const oppInnerMaxH = Math.max(120, remain - comboMinH - gap);
 
-  // Ensure we always have room for Opp + Combo.
-  const minTotal = (minOppH + pad) + comboH + gap*2 + (nextInner + pad);
-  if(minTotal > sideH){
-    // shrink Next first, then combo if needed
-    const over = minTotal - sideH;
-    nextInner = Math.max(56, nextInner - over);
-    if((minOppH + pad) + comboH + gap*2 + (nextInner + pad) > sideH){
-      comboH = Math.max(44, comboH - (over*0.6));
-    }
-  }
+  let oppCell = Math.floor(Math.min(oppInnerW / COLS, oppInnerMaxH / ROWS));
+  oppCell = clamp(oppCell, 6, 28);
+  const oppW = oppCell * COLS;
+  const oppHpx = oppCell * ROWS;
 
-  const nextH = Math.max(56 + pad, nextInner + pad);
-  const oppH  = Math.max(minOppH + pad, sideH - nextH - comboH - gap*2);
+  const oppCardH = oppHpx + pad;
+  const comboH = Math.max(comboMinH, remain - oppCardH - gap);
 
-  if(nextCard) nextCard.style.height = nextH + 'px';
-  if(oppCard)  oppCard.style.height  = oppH + 'px';
-  if(comboCard) comboCard.style.height = comboH + 'px';
+  if(nextCard) nextCard.style.height = nextCardH + 'px';
+  if(oppCard)  oppCard.style.height  = oppCardH + 'px';
+  if(comboArea) comboArea.style.height = comboH + 'px';
 
 
   // NEXT: 4x4, fit to Next box inner size (square)
@@ -89,18 +84,11 @@ export function fitCanvases(cvMe, cvOpp, cvNext){
   cvNext.style.width  = '100%';
   cvNext.style.height = '100%';
 
-  // Opp: 10x20, fit to remaining box
-  const oppInnerW = Math.max(64, (sideW - pad));
-  const oppInnerH = Math.max(minOppH, (oppH - pad));
-  let oppCell = Math.floor(Math.min(oppInnerW / COLS, oppInnerH / ROWS));
-  oppCell = clamp(oppCell, 6, 24);
-  const oppW = oppCell * COLS;
-  const oppHpx = oppCell * ROWS;
-
+  // Opp: 10x20 (no stretch). Height is explicit px, width is 100%.
   cvOpp.width  = Math.floor(oppW * dpr);
   cvOpp.height = Math.floor(oppHpx * dpr);
   cvOpp.style.width  = '100%';
-  cvOpp.style.height = '100%';
+  cvOpp.style.height = oppHpx + 'px';
 }
 
 

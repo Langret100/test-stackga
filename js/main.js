@@ -22,8 +22,8 @@ const ui = {
   effect: $("effect"),
   mode: $("mode"),
 
-  combo: $("combo"),
-  comboBubble: $("comboBubble"),
+  comboNum: $("comboNum"),
+  comboArea: $("comboArea"),
 
   overlay: $("overlay"),
   overlayTitle: $("overlayTitle"),
@@ -79,13 +79,13 @@ function flash(kind){
 }
 
 function bumpCombo(add){
-  if(!ui.combo || !ui.comboBubble) return;
+  if(!ui.comboNum || !ui.comboArea) return;
   comboLines = Math.max(0, comboLines + (add||0));
-  ui.combo.textContent = String(comboLines);
-  ui.comboBubble.classList.remove('comboPop');
+  ui.comboNum.textContent = String(comboLines);
+  ui.comboArea.classList.remove('comboPop');
   // force reflow for restart animation
-  void ui.comboBubble.offsetWidth;
-  ui.comboBubble.classList.add('comboPop');
+  void ui.comboArea.offsetWidth;
+  ui.comboArea.classList.add('comboPop');
 }
 
 function safeSetText(el, t){ if(el) el.textContent = t; }
@@ -554,7 +554,10 @@ async function boot(){
 }
 
 // best-effort cleanup on exit
-window.addEventListener("beforeunload", ()=>{
+let _exitCleaned = false;
+function bestEffortExitCleanup(){
+  if(_exitCleaned) return;
+  _exitCleaned = true;
   try{ if(hbTimer) clearInterval(hbTimer); }catch{}
   try{ clearWait(); }catch{}
   if(mode==="online" && db && api && roomId){
@@ -564,6 +567,13 @@ window.addEventListener("beforeunload", ()=>{
     tryCleanupRoom({db, api, roomId}).catch(()=>{});
     try{ if(lobbyId && mySlot!==null) releaseSlot({db, api, lobbyId, slot: mySlot}).catch(()=>{}); }catch{}
   }
+}
+
+// Mobile browsers are more reliable with pagehide/visibilitychange than beforeunload.
+window.addEventListener("beforeunload", bestEffortExitCleanup);
+window.addEventListener("pagehide", bestEffortExitCleanup);
+document.addEventListener("visibilitychange", ()=>{
+  if(document.visibilityState === "hidden") bestEffortExitCleanup();
 });
 
 boot();
