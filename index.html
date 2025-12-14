@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>쌓기게임</title>
+  <link rel="stylesheet" href="./css/game.css" />
+</head>
+<body>
+  <div class="wrap">
+    <header class="topbar">
+      <div class="brand">쌓기게임</div>
+      <div class="topbarRight">
+        <div class="status" id="status">연결 준비…</div>
+      </div>
+    </header>
+
+    <!-- 초대/복사(게임만으로 구현) -->
+    <section class="panel compact" id="invite" aria-label="invite" hidden>
+      <div class="inviteRow">
+        <div class="inviteCol">
+          <div class="small">링크</div>
+          <div class="mono" id="inviteUrl"></div>
+          <button class="btn ghost" id="btnCopyUrl">링크 복사</button>
+        </div>
+        <div class="inviteCol">
+          <div class="small">QR용 문구(그대로 QR로 만들기)</div>
+          <div class="mono" id="qrText"></div>
+          <button class="btn ghost" id="btnCopyText">QR용 문구 복사</button>
+        </div>
+      </div>
+      <div class="small" id="inviteHint"></div>
+    </section>
+
+    <!-- 게임 화면 -->
+    <section class="panel game" id="game">
+      <div class="gameLayout">
+        <div class="me">
+          <div class="hud">
+            <div>점수: <b id="score">0</b></div>
+            <div>레벨: <b id="level">1</b></div>
+            <div>상태: <b id="effect">-</b></div>
+            <div>모드: <b id="mode">-</b></div>
+          </div>
+
+          <div class="canvasBox" id="meBox">
+            <div class="playArea" aria-label="me">
+              <div class="playWrap">
+                <canvas id="cvMe" width="360" height="720"></canvas>
+
+                <!-- Next preview (small overlay; no label) -->
+                <div class="nextOverlay" aria-hidden="true">
+                  <canvas id="cvNext" width="120" height="120"></canvas>
+                </div>
+
+                <!-- Opponent view (PIP overlay over the board) -->
+                <div class="pipOverlay" aria-hidden="true">
+                  <canvas id="cvOpp" width="120" height="240"></canvas>
+                </div>
+              </div>
+            </div>
+
+            <div class="overlay hidden" id="overlay">
+              <div class="overlayCard">
+                <div class="big" id="overlayTitle">대기…</div>
+                <div class="small" id="overlayDesc"></div>
+                <div class="row" id="overlayBtns">
+                  <button class="btn" id="btnStartCpu">PC와 시작</button>
+                  <button class="btn ghost" id="btnRestart">다시 만들기</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="controls">
+            모바일: 탭=회전 / 좌우 스와이프=이동 / 아래 스와이프=내리기 / 강하게 아래=하드드롭 · PC: ←→↑↓ / Space / P
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div id="log" class="hidden"></div>
+
+    <footer class="footer">
+      <span class="small">※ file:// 로 직접 열면 모듈이 차단됩니다. GitHub Pages(https) 또는 로컬 서버(http)로 실행하세요.</span>
+    </footer>
+  </div>
+
+  <script type="module" src="./js/main.js"></script>
+</body>
+</html>
