@@ -1,6 +1,7 @@
 
 export const COLS = 10;
-export const ROWS = 20;
+// 요청: 기존 20행 기준에서 +3행 고정
+export const ROWS = 23;
 
 const SHAPES = {
   I: [

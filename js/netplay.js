@@ -74,6 +74,8 @@ export async function joinRoom({db, api, roomId, name, seed}){
   const myStateRef = api.ref(db, `${STATES_PATH(roomId)}/${pid}`);
 
   const randomSeed = (seed ?? ((Math.random()*2**32)>>>0)) >>> 0;
+  // 요청: 20행 기준 +3행 고정
+  const desiredRows = 23;
 
   let joined = false;
   for(let attempt=0; attempt<2; attempt++){
@@ -83,6 +85,7 @@ export async function joinRoom({db, api, roomId, name, seed}){
           createdAt: Date.now(),
           updatedAt: Date.now(),
           seed: randomSeed,
+          rows: desiredRows,
           state: "open",
           result: null,
           joined: {}
@@ -91,6 +94,8 @@ export async function joinRoom({db, api, roomId, name, seed}){
       meta.updatedAt = Date.now();
       meta.state = meta.state || "open";
       meta.seed = (meta.seed===undefined || meta.seed===null) ? randomSeed : (meta.seed>>>0);
+      // rows는 항상 23으로 맞춤(공정/동일 화면)
+      meta.rows = desiredRows;
       meta.joined = meta.joined || {};
 
       if(meta.state !== "open" && meta.state !== "playing") return meta;
@@ -289,8 +294,10 @@ export async function tryCleanupRoom({db, api, roomId}){
  */
 export async function releaseSlot({db, api, lobbyId, slot}){
   if(lobbyId===undefined || lobbyId===null) return;
-  if(slot===undefined || slot===null) return;
-  await api.remove(api.ref(db, SLOT_PATH(lobbyId, slot))).catch(()=>{});
+  // slot이 없으면 "슬롯 제거"는 스킵하고, mm prune만 시도
+  if(slot!==undefined && slot!==null){
+    await api.remove(api.ref(db, SLOT_PATH(lobbyId, slot))).catch(()=>{});
+  }
   // prune mm if all slots empty
   try{
     const slotsRef = api.ref(db, `${LOBBY_MM_PATH(lobbyId)}/slots`);

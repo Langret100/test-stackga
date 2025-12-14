@@ -15,6 +15,7 @@ const $ = (id)=>document.getElementById(id);
 const ui = {
   cvMe: $("cvMe"),
   cvOpp: $("cvOpp"),
+  oppTag: $("oppTag"),
   cvNext: $("cvNext"),
 
   score: $("score"),
@@ -46,9 +47,9 @@ ui.btnSound?.addEventListener("click", ()=>{
   audio.toggleMuted();
   syncSoundIcon();
 });
-// start audio on first user gesture
-window.addEventListener("pointerdown", ()=>audio.gestureStart(), { once:true, passive:true });
-window.addEventListener("keydown", ()=>audio.gestureStart(), { once:true });
+// start/retry audio on user gestures (mobile: 첫 play()가 실패할 수 있어 재시도 필요)
+window.addEventListener("pointerdown", ()=>audio.gestureStart(), { passive:true });
+window.addEventListener("keydown", ()=>audio.gestureStart());
 
 const boardColEl = document.getElementById("boardCol");
 const playShellEl = document.getElementById("playShell");
@@ -115,6 +116,7 @@ function hideOverlay(){ ui.overlay.classList.add("hidden"); }
 
 // Restart = reload
 ui.btnRestart?.addEventListener("click", ()=>{
+  try{ audio.gestureStart(); }catch{}
   audio.gestureStart();
   location.reload();
 });
@@ -159,8 +161,13 @@ function onKey(e){
 document.addEventListener("keydown", onKey);
 initTouchControls(ui.cvMe, performAction);
 
+
+// 요청: 기존 20행에서 +3행 고정
+let playRows = 23;
 // --- Responsive sizing
-function fit(){ fitCanvases(ui.cvMe, ui.cvOpp, ui.cvNext); }
+function fit(){
+  fitCanvases(ui.cvMe, ui.cvOpp, ui.cvNext, playRows);
+}
 window.addEventListener("resize", fit);
 window.addEventListener("orientationchange", fit);
 fit();
@@ -347,6 +354,7 @@ function startWaitCountdown(seconds){
 }
 
 function startCpuMode(reason){
+  try{ audio.gestureStart(); }catch{}
   // online에서 PC로 전환 시: 방 점유를 풀어 다음 사용자 매칭이 막히지 않도록 best-effort 정리
   if(mode==="online" && api && db && roomId && pid && playersRef && metaRef){
     try{ api.remove(api.child(playersRef, pid)).catch(()=>{}); }catch{}
@@ -359,17 +367,22 @@ function startCpuMode(reason){
         return m;
       }).catch(()=>{});
     }catch{}
+    // also release lobby slot and delete room so /signals does not linger
+    try{ if(lobbyId) releaseSlot({db, api, lobbyId, slot: mySlot}).catch(()=>{}); }catch{}
+    try{ hardDeleteRoom({db, api, roomId}).catch(()=>{}); }catch{}
+
   }
 
   mode = "cpu";
+  if(ui.oppTag) ui.oppTag.textContent = "Offline";
   setStatus(reason);
   clearWait();
   roomUnsub?.(); roomUnsub=null;
   oppUnsub?.(); oppUnsub=null;
   evUnsub?.(); evUnsub=null;
 
-  meGame = new StackGame((Math.random()*2**32)>>>0);
-  cpuGame = new StackGame((Math.random()*2**32)>>>0);
+  meGame = new StackGame(((Math.random()*2**32)>>>0), playRows||20);
+  cpuGame = new StackGame(((Math.random()*2**32)>>>0), playRows||20);
   cpuCtl = new CpuController(cpuGame);
   oppLastBoard = cpuGame.snapshot();
   comboLines = 0;
@@ -404,7 +417,7 @@ async function endGame(won){
     if(cleanupTimer) clearTimeout(cleanupTimer);
     cleanupTimer = setTimeout(()=>{
       hardDeleteRoom({db, api, roomId}).catch(()=>{});
-      if(lobbyId && mySlot!==null){ releaseSlot({db, api, lobbyId, slot: mySlot}).catch(()=>{}); }
+      if(lobbyId){ releaseSlot({db, api, lobbyId, slot: mySlot}).catch(()=>{}); }
     }, 350);
   }
 }
@@ -468,8 +481,11 @@ function onRoomUpdate(room){
     clearWait();
     mode = "online";
     safeSetText(ui.mode, "온라인");
+    if(ui.oppTag) ui.oppTag.textContent = "Player";
 
-    meGame = new StackGame((meta.seed>>>0) || 1);
+    // rows는 고정(23행). seed만 동일하게 맞춤.
+    meGame = new StackGame(((meta.seed>>>0) || 1), playRows);
+    fit();
     oppLastBoard = null;
     comboLines = 0;
     bumpCombo(0);
@@ -540,6 +556,7 @@ async function boot(){
     setStatus("연결 중…");
     mode = "online";
     safeSetText(ui.mode, "온라인");
+    if(ui.oppTag) ui.oppTag.textContent = "Player";
 
     const joined = await joinLobby({db, api, lobbyId, name: "Player", maxTeams: 10});
     mySlot = joined.slot;
@@ -565,8 +582,11 @@ function bestEffortExitCleanup(){
     try{ if(playersRef && pid) api.remove(api.child(playersRef, pid)).catch(()=>{}); }catch{}
     try{ if(statesRef && pid) api.remove(api.child(statesRef, pid)).catch(()=>{}); }catch{}
     tryCleanupRoom({db, api, roomId}).catch(()=>{});
-    try{ if(lobbyId && mySlot!==null) releaseSlot({db, api, lobbyId, slot: mySlot}).catch(()=>{}); }catch{}
+    try{ if(lobbyId) releaseSlot({db, api, lobbyId, slot: mySlot}).catch(()=>{}); }catch{}
   }
+
+  // 추가: 모드와 상관없이 mm가 비어있으면 제거(prune) 시도
+  try{ if(db && api && lobbyId) releaseSlot({db, api, lobbyId, slot: null}).catch(()=>{}); }catch{}
 }
 
 // Mobile browsers are more reliable with pagehide/visibilitychange than beforeunload.

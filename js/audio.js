@@ -52,14 +52,19 @@ export function createAudio({ musicUrl } = {}) {
   }
 
   function gestureStart() {
-    if (started) return;
+    // Always try to (re)start audio on any user gesture.
+    // Some mobile browsers may reject the first play() even on a gesture; retrying fixes "music only after restart".
     ensureGraph();
     resumeCtx();
     ensureBgm();
     if (bgm && !muted) {
-      bgm.play().catch(() => {
-        // ignore: browser may still block until another gesture
-      });
+      try {
+        // If it was blocked earlier, bgm may still be paused.
+        if (bgm.paused) {
+          const p = bgm.play();
+          if (p && typeof p.catch === "function") p.catch(() => {});
+        }
+      } catch {}
     }
     started = true;
   }
