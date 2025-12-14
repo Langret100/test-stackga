@@ -3,7 +3,7 @@ export const COLS = 10;
 // 요청: 기존 20행 기준에서 +3행 고정
 export const ROWS = 23;
 
-const SHAPES = {
+export const SHAPES = {
   I: [
     [[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]],
     [[0,0,1,0],[0,0,1,0],[0,0,1,0],[0,0,1,0]],
@@ -143,6 +143,9 @@ export class StackGame {
       bigNextUntil: 0
     };
 
+    // RNG for garbage-hole positions
+    this._garbageRnd = mulberry32(((this.seed ^ 0xA5A5A5A5)>>>0) || 1);
+
     this.current = null;
     this.next = this._makePiece();
     this.dead = false;
@@ -178,6 +181,41 @@ export class StackGame {
     if(kind==="shrink") this.effects.shrinkUntil = Math.max(this.effects.shrinkUntil, now+ms);
     if(kind==="bignext") this.effects.bigNextUntil = Math.max(this.effects.bigNextUntil, now+ms);
   }
+  addGarbage(lines){
+    if(this.dead || this.paused) return;
+    const n = Math.max(0, lines|0);
+    for(let i=0;i<n;i++){
+      // If blocks are already in the top row, rising garbage causes top-out.
+      if(this.board[0].some(v=>v)){
+        this.dead = true;
+        return;
+      }
+      const hole = Math.floor(this._garbageRnd()*COLS);
+      const row = new Array(COLS).fill(8);
+      row[hole] = 0;
+
+      // Rising garbage: shift everything up, insert garbage at bottom
+      this.board.shift();
+      this.board.push(row);
+
+      // If the active piece now overlaps, try pushing it up a bit; otherwise top-out.
+      if(this.current && collide(this.board, this.current, this.current.x, this.current.y, this.current.rot)){
+        let ok = false;
+        for(let k=0;k<4;k++){
+          this.current.y -= 1;
+          if(!collide(this.board, this.current, this.current.x, this.current.y, this.current.rot)){
+            ok = true;
+            break;
+          }
+        }
+        if(!ok){
+          this.dead = true;
+          return;
+        }
+      }
+    }
+  }
+
 
   tick(dt){
     if(this.dead || this.paused) return;
@@ -325,7 +363,8 @@ function colorOf(v, ghost){
     "rgba(179,142,255,0.95)",
     "rgba(255,110,170,0.95)",
     "rgba(255,140,110,0.95)",
-    "rgba(180,255,110,0.95)"
+    "rgba(180,255,110,0.95)",
+    "rgba(148,163,184,0.92)"
   ][v] || "rgba(255,255,255,0.9)";
   if(!ghost) return base;
   return base.replace("0.95","0.55");

@@ -82,8 +82,8 @@ body{
 .boardCol{
   flex:1 1 auto;
   display:flex;
-  align-items:flex-start;
-  justify-content:flex-start;
+  align-items:center;
+  justify-content:center;
 }
 
 .sideCol{
@@ -170,8 +170,8 @@ canvas{
 .boardCard{
   flex:1 1 auto;
   display:flex;
-  align-items:flex-start;
-  justify-content:flex-start;
+  align-items:center;
+  justify-content:center;
   padding:10px;
 }
 .boardCard canvas{ border-radius:14px; }

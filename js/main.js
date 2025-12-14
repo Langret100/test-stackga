@@ -148,17 +148,44 @@ function performAction(action){
   }
 }
 
+let downHeld = false;
+let downTimer = null;
+
+function stopDownHold(){
+  downHeld = false;
+  if(downTimer){
+    clearInterval(downTimer);
+    downTimer = null;
+  }
+}
+
 function onKey(e){
+  if(e.code==="ArrowDown"){
+    e.preventDefault();
+    if(!downHeld){
+      downHeld = true;
+      performAction("down");
+      downTimer = setInterval(()=>{
+        // keep dropping while held
+        if(!downHeld) return;
+        performAction("down");
+      }, 30);
+    }
+    return;
+  }
+
   if(e.repeat) return;
   if(e.code==="ArrowLeft") performAction("left");
   else if(e.code==="ArrowRight") performAction("right");
-  else if(e.code==="ArrowDown") performAction("down");
   else if(e.code==="ArrowUp") performAction("rotate");
   else if(e.code==="Space"){ e.preventDefault(); performAction("drop"); }
   else if(e.code==="KeyP") performAction("pause");
 }
 
+
 document.addEventListener("keydown", onKey);
+document.addEventListener("keyup", (e)=>{ if(e.code==="ArrowDown") stopDownHold(); });
+window.addEventListener("blur", stopDownHold);
 initTouchControls(ui.cvMe, performAction);
 
 
@@ -173,17 +200,16 @@ window.addEventListener("orientationchange", fit);
 fit();
 
 // --- Effects
-function linesToAttack(c){
-  if(c===1) return { kind:"shrink", ms:3000 };
-  if(c===2) return { kind:"invert", ms:2000 };
-  if(c>=3) return { kind:"bignext", ms:3000 };
-  return null;
+function linesToGarbage(c){
+  // Classic-like: 1=0, 2=1, 3=2, 4=4
+  if(c===2) return 1;
+  if(c===3) return 2;
+  if(c>=4) return 4;
+  return 0;
 }
-function applyAttackTo(game, a){
-  if(!game) return;
-  if(a.kind==="shrink") game.applyEffect("shrink", a.ms||3000);
-  if(a.kind==="invert") game.applyEffect("invert", a.ms||2000);
-  if(a.kind==="bignext") game.applyEffect("bignext", a.ms||3000);
+function applyGarbageTo(game, n){
+  if(!game || !n) return;
+  game.addGarbage(n|0);
 }
 
 // --- Runtime
@@ -276,9 +302,9 @@ function startLoop(){
       const c2 = cpuGame.lastCleared || 0;
       if(c2>0){
         cpuGame.lastCleared = 0;
-        const atk = linesToAttack(c2);
+        const atk = linesToGarbage(c2);
         if(atk){
-          applyAttackTo(meGame, atk);
+          applyGarbageTo(meGame, atk);
           // 받는 쪽 이펙트
           shake("strong");
           flash("bad");
@@ -293,7 +319,7 @@ function startLoop(){
     const c = meGame?.lastCleared || 0;
     if(c>0){
       meGame.lastCleared = 0;
-      const atk = linesToAttack(c);
+      const atk = linesToGarbage(c);
       bumpCombo(c);
       // 줄 지울 때마다 이펙트
       shake("soft");
@@ -302,9 +328,9 @@ function startLoop(){
       if(atk){
         audio.sfx("attackSend");
         if(mode==="online" && oppPid){
-          pushEvent({ api, eventsRef, event:{ from: pid, kind:"attack", payload: atk } }).catch(()=>{});
+          pushEvent({ api, eventsRef, event:{ from: pid, kind:"garbage", payload: { n: atk } } }).catch(()=>{});
         }else if(mode==="cpu" && cpuGame){
-          applyAttackTo(cpuGame, atk);
+          applyGarbageTo(cpuGame, atk);
         }
       }
     }
@@ -523,8 +549,8 @@ function onOppState(res){
 function onEventRecv({key, ev}){
   if(seenEvents.has(key)) return;
   seenEvents.add(key);
-  if(ev.kind === "attack"){
-    applyAttackTo(meGame, ev.payload || {});
+  if(ev.kind === "garbage"){
+    applyGarbageTo(meGame, (ev.payload && ev.payload.n) || 0);
     // 공격 들어올 때 이펙트
     shake("strong");
     flash("bad");
