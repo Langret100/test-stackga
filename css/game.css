@@ -1,72 +1,118 @@
-
-:root{ --bg:#0b1020; --card:#121a33; --ink:#e9eefc; --muted:#a9b3d4; --accent:#6ee7ff; --danger:#ff6b6b; --ok:#7CFFB2;}
+:root{
+  --bg:#f6f7fb;
+  --card:#ffffff;
+  --ink:#0b1220;
+  --muted:#556377;
+  --border:rgba(15,23,42,.12);
+  --shadow:0 10px 24px rgba(15,23,42,.08);
+}
 *{box-sizing:border-box}
 html,body{height:100%}
-body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;background:linear-gradient(180deg,#070a15,#0b1020);color:var(--ink);overflow-x:hidden}
-.wrap{max-width:1100px;margin:0 auto;padding:18px}
-.topbar{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:14px}
-.brand{font-weight:800;letter-spacing:.2px}
-.status{color:var(--muted);font-size:13px}
-.panel{margin-top:14px;padding:16px;border-radius:16px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07)}
-.panel.compact{padding:12px}
-.inviteRow{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start}
-.inviteCol .btn{margin-top:10px;width:100%}
-h1{margin:0 0 10px 0;font-size:22px}
-.hint{margin:0 0 14px 0;color:var(--muted);line-height:1.45}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.card{padding:14px;border-radius:14px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08)}
-h2{margin:0 0 10px 0;font-size:16px}
-.lbl{display:block;margin:8px 0 6px 0;color:var(--muted);font-size:12px}
-.inp{width:100%;padding:10px 10px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:rgba(0,0,0,.25);color:var(--ink);outline:none}
-.inp::placeholder{color:rgba(233,238,252,.45)}
-.btn{cursor:pointer;border:0;border-radius:12px;padding:10px 12px;font-weight:700;background:linear-gradient(90deg,rgba(110,231,255,.95),rgba(124,255,178,.9));color:#041019}
-.btn:disabled{opacity:.45;cursor:not-allowed}
-.btn.ghost{background:transparent;border:1px solid rgba(255,255,255,.16);color:var(--ink)}
-.row{display:flex;gap:10px;margin-top:10px}
-.mono{margin-top:10px;padding:10px;border-radius:12px;background:rgba(0,0,0,.25);border:1px dashed rgba(255,255,255,.15);color:var(--ink);font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:12px;white-space:pre-wrap;word-break:break-all;min-height:38px}
-.small{color:var(--muted);font-size:12px;margin-top:8px}
-.roomline{display:flex;gap:18px;align-items:center;justify-content:flex-start;margin-top:14px;color:var(--muted);flex-wrap:wrap}
-.hidden{display:none!important}
-.footer{margin-top:14px;color:var(--muted);text-align:center}
-.gameLayout{display:grid;grid-template-columns:1fr;gap:14px;align-items:start}
-.hud{display:flex;gap:18px;flex-wrap:wrap;margin-bottom:10px;color:var(--muted)}
-/* Overlays live on top of the main board */
-.playWrap{position:relative;display:inline-block}
-.nextOverlay{position:absolute;left:0;top:0;z-index:10;pointer-events:none}
-.nextOverlay canvas{border:0;border-radius:12px;background:rgba(0,0,0,.22)}
-
-.canvasBox{position:relative;border-radius:18px;overflow:hidden;border:1px solid rgba(255,255,255,.12);background:rgba(0,0,0,.22);padding:8px}
-.playArea{display:flex;align-items:center;justify-content:center}
-canvas{display:block;margin:0 auto;background:rgba(0,0,0,.25);border-radius:10px;border:1px solid rgba(255,255,255,.08)}
-.controls{margin-top:10px;color:var(--muted);font-size:12px}
-.overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.55)}
-.overlayCard{width:min(420px,92%);padding:16px;border-radius:16px;background:rgba(18,26,51,.92);border:1px solid rgba(255,255,255,.14);text-align:center}
-.big{font-size:22px;font-weight:900;margin-bottom:8px}
-@media (max-width:920px){
-  .grid{grid-template-columns:1fr}
-  .gameLayout{grid-template-columns:1fr}
-  .inviteRow{grid-template-columns:1fr}
+body{
+  margin:0;
+  font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;
+  background:var(--bg);
+  color:var(--ink);
+  overflow:hidden;
 }
 
-/* --- Mobile: portrait-first fullscreen + PIP overlay --- */
-canvas{touch-action:none}
+/* Full-bleed layout */
+.wrap{
+  width:100vw;
+  height:100svh;
+  display:flex;
+  flex-direction:column;
+}
 
-.topbarRight{display:flex;align-items:center;gap:10px}
+.topbar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:10px 12px;
+  background:rgba(255,255,255,.92);
+  border-bottom:1px solid var(--border);
+}
+.brand{font-weight:900;letter-spacing:.2px}
+.status{font-size:13px;color:var(--muted)}
 
-.pipOverlay{position:absolute;right:0;top:0;z-index:11;pointer-events:none}
-.pipOverlay #cvOpp{border:0;border-radius:14px;background:rgba(0,0,0,.22)}
+.panel{padding:0;margin:0}
+.panel.compact{padding:10px 12px;border-bottom:1px solid var(--border);background:rgba(255,255,255,.92)}
+
+.inviteRow{display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:start}
+.inviteCol .btn{margin-top:8px;width:100%}
+.small{color:var(--muted);font-size:12px;margin-top:6px}
+.mono{margin-top:8px;padding:10px;border-radius:12px;background:#f1f3f8;border:1px dashed rgba(15,23,42,.22);color:var(--ink);font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:12px;white-space:pre-wrap;word-break:break-all;min-height:38px}
+.btn{cursor:pointer;border:0;border-radius:12px;padding:10px 12px;font-weight:800;background:#0b1220;color:#fff}
+.btn.ghost{background:transparent;border:1px solid var(--border);color:var(--ink)}
+.row{display:flex;gap:10px;margin-top:10px;justify-content:center}
+
+.gamePanel{flex:1;display:flex;flex-direction:column;min-height:0}
+.hud{display:flex;gap:14px;flex-wrap:wrap;align-items:center;padding:10px 12px;color:var(--muted);border-bottom:1px solid var(--border);background:rgba(255,255,255,.92)}
+
+/* Core play area: left board + right column */
+.playShell{
+  position:relative;
+  flex:1;
+  display:flex;
+  gap:10px;
+  /* no left/right margins: board sticks to the left edge */
+  padding:8px 0 10px 0;
+  min-height:0;
+  align-items:stretch;
+}
+
+.boardCol{
+  flex:1 1 auto;
+  display:flex;
+  align-items:flex-start;
+  justify-content:flex-start;
+}
+
+.sideCol{
+  flex:0 0 clamp(112px, 28vw, 170px);
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+
+.cardBox{
+  position:relative;
+  border-radius:16px;
+  background:rgba(255,255,255,.92);
+  border:1px solid var(--border);
+  box-shadow:var(--shadow);
+  padding:8px;
+  overflow:hidden;
+}
+.cardTag{
+  position:absolute;
+  left:8px;
+  top:6px;
+  font-size:11px;
+  letter-spacing:.6px;
+  font-weight:900;
+  color:var(--muted);
+}
+
+canvas{
+  display:block;
+  background:#ffffff;
+  border:1px solid rgba(15,23,42,.12);
+  border-radius:14px;
+}
+
+/* Next/opp canvases should fill their card */
+.nextCard canvas, .oppCard canvas{width:100%;height:auto}
+.nextCard canvas{aspect-ratio:1 / 1}
+.oppCard canvas{aspect-ratio:1 / 2}
+
+.overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(15,23,42,.35);backdrop-filter:blur(2px)}
+.overlayCard{width:min(420px,92%);padding:16px;border-radius:18px;background:rgba(255,255,255,.95);border:1px solid rgba(15,23,42,.18);text-align:center;box-shadow:0 18px 44px rgba(15,23,42,.18)}
+.big{font-size:22px;font-weight:1000;margin-bottom:8px}
+.hidden{display:none!important}
+
+.footer{padding:8px 10px;color:var(--muted);text-align:center;font-size:12px;border-top:1px solid var(--border);background:rgba(255,255,255,.92)}
 
 @media (max-width:920px){
-  .wrap{max-width:none;margin:0;padding:0;min-height:100svh}
-  .panel{margin-top:0;padding:0;border:0;background:transparent}
-  .topbar{margin:0;border-radius:0;border-left:0;border-right:0;padding:10px 10px}
-
-  #game{padding:0}
-  .me{display:flex;flex-direction:column;gap:8px;padding:10px 10px 12px 10px;min-height:calc(100svh - 50px)}
-  .hud{margin:0;gap:12px;align-items:center}
-  .controls{display:none}
-
-  .canvasBox{flex:1;display:flex;align-items:center;justify-content:center;padding:8px;border-radius:18px}
-  canvas{border-radius:18px}
-  .pipOverlay{right:0;top:0}
+  .inviteRow{grid-template-columns:1fr}
 }

@@ -10,13 +10,11 @@
   <div class="wrap">
     <header class="topbar">
       <div class="brand">쌓기게임</div>
-      <div class="topbarRight">
-        <div class="status" id="status">연결 준비…</div>
-      </div>
+      <div class="status" id="status">연결 준비…</div>
     </header>
 
-    <!-- 초대/복사(게임만으로 구현) -->
-    <section class="panel compact" id="invite" aria-label="invite" hidden>
+    <!-- 초대 정보(필요할 때만 표시) -->
+    <section class="panel compact" id="invite" hidden>
       <div class="inviteRow">
         <div class="inviteCol">
           <div class="small">링크</div>
@@ -32,48 +30,40 @@
       <div class="small" id="inviteHint"></div>
     </section>
 
-    <!-- 게임 화면 -->
-    <section class="panel game" id="game">
-      <div class="gameLayout">
-        <div class="me">
-          <div class="hud">
-            <div>점수: <b id="score">0</b></div>
-            <div>레벨: <b id="level">1</b></div>
-            <div>상태: <b id="effect">-</b></div>
-            <div>모드: <b id="mode">-</b></div>
+    <section class="panel gamePanel" id="game">
+      <div class="hud" id="hud">
+        <div>점수: <b id="score">0</b></div>
+        <div>레벨: <b id="level">1</b></div>
+        <div>상태: <b id="effect">-</b></div>
+        <div>모드: <b id="mode">-</b></div>
+      </div>
+
+      <div class="playShell" id="playShell">
+        <!-- 내 게임 화면: 좌측에 딱 붙음 -->
+        <div class="boardCol" id="boardCol" aria-label="me">
+          <canvas id="cvMe" width="360" height="720"></canvas>
+        </div>
+
+        <!-- 남는 공간: 상단 NEXT, 아래 상대 화면(보드만) -->
+        <div class="sideCol" id="sideCol" aria-label="side">
+          <div class="cardBox nextCard" id="nextCard" aria-label="next">
+            <div class="cardTag">NEXT</div>
+            <canvas id="cvNext" width="120" height="120"></canvas>
           </div>
-
-          <div class="canvasBox" id="meBox">
-            <div class="playArea" aria-label="me">
-              <div class="playWrap">
-                <canvas id="cvMe" width="360" height="720"></canvas>
-
-                <!-- Next preview (small overlay; no label) -->
-                <div class="nextOverlay" aria-hidden="true">
-                  <canvas id="cvNext" width="120" height="120"></canvas>
-                </div>
-
-                <!-- Opponent view (PIP overlay over the board) -->
-                <div class="pipOverlay" aria-hidden="true">
-                  <canvas id="cvOpp" width="120" height="240"></canvas>
-                </div>
-              </div>
-            </div>
-
-            <div class="overlay hidden" id="overlay">
-              <div class="overlayCard">
-                <div class="big" id="overlayTitle">대기…</div>
-                <div class="small" id="overlayDesc"></div>
-                <div class="row" id="overlayBtns">
-                  <button class="btn" id="btnStartCpu">PC와 시작</button>
-                  <button class="btn ghost" id="btnRestart">다시 만들기</button>
-                </div>
-              </div>
-            </div>
+          <div class="cardBox oppCard" id="oppCard" aria-label="opponent">
+            <canvas id="cvOpp" width="120" height="240"></canvas>
           </div>
+        </div>
 
-          <div class="controls">
-            모바일: 탭=회전 / 좌우 스와이프=이동 / 아래 스와이프=내리기 / 강하게 아래=하드드롭 · PC: ←→↑↓ / Space / P
+        <!-- 오버레이(대기/결과) -->
+        <div class="overlay hidden" id="overlay">
+          <div class="overlayCard">
+            <div class="big" id="overlayTitle">대기…</div>
+            <div class="small" id="overlayDesc"></div>
+            <div class="row" id="overlayBtns">
+              <button class="btn" id="btnStartCpu">PC와 시작</button>
+              <button class="btn ghost" id="btnRestart">다시 만들기</button>
+            </div>
           </div>
         </div>
       </div>

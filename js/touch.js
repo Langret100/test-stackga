@@ -1,5 +1,5 @@
-// Mobile/touch helpers (implemented from scratch for this project)
-// Touch controls (portrait-first):
+// Mobile/touch helpers (implemented from scratch)
+// Touch controls:
 // - Tap: rotate
 // - Swipe left/right: move (continuous)
 // - Swipe down: soft drop (continuous)
@@ -10,65 +10,70 @@ const ROWS = 20;
 
 function clamp(n, a, b){ return Math.max(a, Math.min(b, n)); }
 
+/**
+ * 캔버스 크기 자동 맞춤
+ * - 세로(모바일) 기준: 내 보드는 좌측에 딱 붙이고
+ * - 우측 남는 공간: 위=NEXT, 아래=상대 보드(10x20)만
+ */
 export function fitCanvases(cvMe, cvOpp, cvNext){
-  if(!cvMe || !cvOpp) return;
+  if(!cvMe || !cvOpp || !cvNext) return;
+
   const dpr = Math.min(2, window.devicePixelRatio || 1);
 
-  // visualViewport is more stable on mobile (address bar / keyboard)
-  const vvp = window.visualViewport;
-  const vw = Math.max(320, (vvp?.width ?? window.innerWidth ?? 0));
-  const vh = Math.max(520, (vvp?.height ?? window.innerHeight ?? 0));
-  const portrait = vh >= vw;
+  // 실제 레이아웃 폭/높이를 DOM에서 측정
+  const playShell = document.getElementById('playShell');
+  const boardCol = document.getElementById('boardCol');
+  const sideCol = document.getElementById('sideCol');
+  const nextCard = document.getElementById('nextCard');
+  const oppCard = document.getElementById('oppCard');
 
-  // Reserve space for header/hud and safe areas (measure actual DOM when possible).
-  const topbarH = document.querySelector('.topbar')?.offsetHeight || 0;
-  const hudH = document.querySelector('.hud')?.offsetHeight || 0;
-  const extra = portrait ? 28 : 18; // paddings/margins buffer
-  const reservedH = clamp(topbarH + hudH + extra, portrait ? 72 : 60, portrait ? 160 : 130);
+  const shellW = playShell?.clientWidth || (window.visualViewport?.width || window.innerWidth || 360);
+  const shellH = playShell?.clientHeight || (window.visualViewport?.height || window.innerHeight || 640);
 
-  const maxH = Math.max(360, vh - reservedH);
-  const maxW = Math.min(portrait ? (vw - 16) : (vw - 240), 760);
+  const sideW = sideCol?.clientWidth || clamp(Math.floor(shellW * 0.28), 112, 170);
+  const boardW = boardCol?.clientWidth || Math.max(200, shellW - sideW - 10);
 
-  let cell = clamp(Math.floor(Math.min(maxW / COLS, maxH / ROWS)), 16, 46);
-  // Slightly reduce the main board on portrait so the PIP doesn't feel cramped.
-  if(portrait) cell = Math.max(14, Math.floor(cell * 0.92));
-  const logicalW = cell * COLS;
-  const logicalH = cell * ROWS;
+  // 보드가 세로로 꽉 차도록 (HUD는 이미 playShell 밖)
+  const maxH = Math.max(240, shellH);
+  let cell = Math.floor(Math.min(boardW / COLS, maxH / ROWS));
+  cell = clamp(cell, 14, 48);
 
-  cvMe.width = Math.floor(logicalW * dpr);
-  cvMe.height = Math.floor(logicalH * dpr);
-  cvMe.style.width = logicalW + "px";
-  cvMe.style.height = logicalH + "px";
+  const meW = cell * COLS;
+  const meH = cell * ROWS;
+  cvMe.width = Math.floor(meW * dpr);
+  cvMe.height = Math.floor(meH * dpr);
+  cvMe.style.width = meW + 'px';
+  cvMe.style.height = meH + 'px';
 
-  // Opponent PIP overlay box (kept visible on mobile)
-  // - We size the overlay by main-cell units (stable in portrait)
-  // - Game logic uses the same blocked zone (top-right) so blocks never go behind it.
-  const pipCols = 3; // blocked columns on the right
-  const pipRows = 6; // blocked rows on the top
-  const pipW = pipCols * cell;
-  const pipH = pipRows * cell; // keep 1:2 ratio
+  // NEXT: 4x4, 우측 상단 카드 폭에 맞춤
+  const nextInnerW = (nextCard?.clientWidth || sideW) - 16;
+  let nextCell = Math.floor(nextInnerW / 4);
+  nextCell = clamp(nextCell, 10, 18);
+  const nextW = nextCell * 4;
+  const nextH = nextCell * 4;
+  cvNext.width = Math.floor(nextW * dpr);
+  cvNext.height = Math.floor(nextH * dpr);
+  cvNext.style.width = '100%';
+  cvNext.style.height = 'auto';
 
-  cvOpp.width = Math.floor(pipW * dpr);
-  cvOpp.height = Math.floor(pipH * dpr);
-  cvOpp.style.width = pipW + "px";
-  cvOpp.style.height = pipH + "px";
+  // 상대 보드: 남은 높이/폭에 맞춰 10x20
+  const oppInnerW = (oppCard?.clientWidth || sideW) - 16;
+  const usedH = (nextCard?.offsetHeight || 0) + 10; // gap
+  const oppMaxH = Math.max(180, shellH - usedH);
 
-  // Next piece preview (4x4) - half size and overlaid on the main board
-  if(cvNext){
-    const nextCell = clamp(Math.floor(cell * 0.38), 8, 16);
-    const nextW = nextCell * 4;
-    const nextH = nextCell * 4;
-    cvNext.width = Math.floor(nextW * dpr);
-    cvNext.height = Math.floor(nextH * dpr);
-    cvNext.style.width = nextW + 'px';
-    cvNext.style.height = nextH + 'px';
-  }
+  let oppCell = Math.floor(Math.min(oppInnerW / COLS, oppMaxH / ROWS));
+  oppCell = clamp(oppCell, 6, 20);
+  const oppW = oppCell * COLS;
+  const oppH = oppCell * ROWS;
+  cvOpp.width = Math.floor(oppW * dpr);
+  cvOpp.height = Math.floor(oppH * dpr);
+  cvOpp.style.width = '100%';
+  cvOpp.style.height = 'auto';
 }
 
 export function initTouchControls(canvas, onAction){
   if(!canvas || !onAction) return;
 
-  // Disable browser gestures/scroll on the canvas.
   try { canvas.style.touchAction = "none"; } catch {}
 
   let touchStartX = 0;
@@ -103,7 +108,6 @@ export function initTouchControls(canvas, onAction){
     const t = getTouch(e);
     if(!t) return;
 
-    // continuous horizontal moves
     let dx = t.pageX - touchStartX;
     while(Math.abs(dx) >= moveThreshold){
       if(dx > 0){
@@ -116,7 +120,6 @@ export function initTouchControls(canvas, onAction){
       dx = t.pageX - touchStartX;
     }
 
-    // continuous soft drops
     let dy = t.pageY - touchStartY;
     while(!hardDropTriggered && dy >= softThreshold){
       onAction("down");
@@ -124,7 +127,6 @@ export function initTouchControls(canvas, onAction){
       dy = t.pageY - touchStartY;
     }
 
-    // one-shot hard drop on strong downward swipe
     const totalDy = t.pageY - originY;
     if(totalDy > hardDropThreshold && !hardDropTriggered){
       onAction("drop");
@@ -140,7 +142,6 @@ export function initTouchControls(canvas, onAction){
     const totalDx = t.pageX - originX;
     const totalDy = t.pageY - originY;
 
-    // tap => rotate
     if(Math.abs(totalDx) < moveThreshold && Math.abs(totalDy) < moveThreshold && !hardDropTriggered){
       onAction("rotate");
     }
@@ -150,6 +151,5 @@ export function initTouchControls(canvas, onAction){
   canvas.addEventListener("touchmove", onMove, { passive:false });
   canvas.addEventListener("touchend", onEnd, { passive:false });
   canvas.addEventListener("touchcancel", onEnd, { passive:false });
-
   canvas.addEventListener("contextmenu", (e)=>e.preventDefault());
 }

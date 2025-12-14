@@ -1,21 +1,18 @@
-// Firebase 설정 (메신저 방식)
-// - apiKey는 GitHub Pages 배포 시 Secrets(FIREBASE_API_KEY)로 주입: __FIREBASE_API_KEY__
-// - 나머지 값은 본인 Firebase 프로젝트 값으로 채우세요(메신저 압축의 social-chat-firebase.js 참고)
-// - window.SOCIAL_CHAT_FIREBASE_CONFIG 또는 window.STACK_GAME_FIREBASE_CONFIG 로 재정의 가능
+// Firebase 설정 (메신저 프로젝트 방식과 동일)
+// - apiKey 는 커밋하지 않고 __FIREBASE_API_KEY__ 플레이스홀더로 둡니다.
+// - GitHub Pages 배포 시, .github/workflows/pages.yml 에서 Secrets(FIREBASE_API_KEY)로 치환할 수 있습니다.
+// - 필요하면 index.html 에서 window.STACK_GAME_FIREBASE_CONFIG 로 재정의할 수 있습니다.
 
-let cfg = {
+const DEFAULT_CONFIG = {
   apiKey: "__FIREBASE_API_KEY__",
-  authDomain: "__FIREBASE_AUTH_DOMAIN__",
-  databaseURL: "__FIREBASE_DATABASE_URL__",
-  projectId: "__FIREBASE_PROJECT_ID__",
-  storageBucket: "__FIREBASE_STORAGE_BUCKET__",
-  messagingSenderId: "__FIREBASE_MESSAGING_SENDER_ID__",
-  appId: "__FIREBASE_APP_ID__"
+  authDomain: "web-ghost-c447b.firebaseapp.com",
+  databaseURL: "https://web-ghost-c447b-default-rtdb.firebaseio.com",
+  projectId: "web-ghost-c447b",
+  storageBucket: "web-ghost-c447b.firebasestorage.app",
+  messagingSenderId: "198377381878",
+  appId: "1:198377381878:web:83b56b1b4d63138d27b1d7"
 };
 
-if (typeof window !== "undefined") {
-  if (window.SOCIAL_CHAT_FIREBASE_CONFIG) cfg = window.SOCIAL_CHAT_FIREBASE_CONFIG;
-  if (window.STACK_GAME_FIREBASE_CONFIG) cfg = window.STACK_GAME_FIREBASE_CONFIG;
-}
-
-export const firebaseConfig = cfg;
+export const firebaseConfig = (typeof window !== 'undefined' && window.STACK_GAME_FIREBASE_CONFIG)
+  ? window.STACK_GAME_FIREBASE_CONFIG
+  : DEFAULT_CONFIG;

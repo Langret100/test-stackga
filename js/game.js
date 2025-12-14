@@ -2,12 +2,6 @@
 export const COLS = 10;
 export const ROWS = 20;
 
-// UI overlay-safe zone (top-right)
-// - Reserve space for the opponent PIP so blocks never go behind it.
-// - Only affects the top rows; line clears remain normal.
-export const BLOCK_COLS = 3;
-export const BLOCK_ROWS = 6;
-
 const SHAPES = {
   I: [
     [[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]],
@@ -98,8 +92,6 @@ function collide(board, piece, px, py, rot){
       const bx = px + x;
       const by = py + y;
       if(bx<0 || bx>=COLS || by>=ROWS) return true;
-      // block movement behind the UI PIP overlay (top-right)
-      if(by>=0 && by < BLOCK_ROWS && bx >= (COLS - BLOCK_COLS)) return true;
       if(by>=0 && board[by][bx]) return true;
     }
   }
@@ -284,7 +276,7 @@ export function drawBoard(ctx, board, cell, opts={}){
   ctx.clearRect(0,0,ctx.canvas.width,ctx.canvas.height);
   // background grid
   ctx.globalAlpha = 1;
-  ctx.fillStyle = "rgba(0,0,0,0.20)";
+  ctx.fillStyle = "rgba(255,255,255,0.95)";
   ctx.fillRect(0,0,ctx.canvas.width,ctx.canvas.height);
 
   for(let y=0;y<ROWS;y++){
@@ -295,7 +287,7 @@ export function drawBoard(ctx, board, cell, opts={}){
         ctx.fillRect(x*cell, y*cell, cell-1, cell-1);
       } else {
         // faint grid
-        ctx.fillStyle = "rgba(255,255,255,0.03)";
+        ctx.fillStyle = "rgba(15,23,42,0.06)";
         ctx.fillRect(x*cell, y*cell, cell-1, cell-1);
       }
     }
@@ -305,7 +297,7 @@ export function drawBoard(ctx, board, cell, opts={}){
 // Draw next-piece preview in a 4x4 grid (no labels)
 export function drawNext(ctx, piece, cell){
   ctx.clearRect(0,0,ctx.canvas.width,ctx.canvas.height);
-  ctx.fillStyle = "rgba(0,0,0,0.20)";
+  ctx.fillStyle = "rgba(255,255,255,0.95)";
   ctx.fillRect(0,0,ctx.canvas.width,ctx.canvas.height);
   if(!piece) return;
   const shape = SHAPES[piece.type][0];
@@ -313,7 +305,7 @@ export function drawNext(ctx, piece, cell){
   for(let y=0;y<4;y++){
     for(let x=0;x<4;x++){
       if(!shape[y][x]){
-        ctx.fillStyle = "rgba(255,255,255,0.03)";
+        ctx.fillStyle = "rgba(15,23,42,0.06)";
         ctx.fillRect(x*cell, y*cell, cell-1, cell-1);
         continue;
       }
