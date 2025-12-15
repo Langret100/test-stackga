@@ -67,6 +67,15 @@ body{
 }
 .iconBtn:active{transform:translateY(1px)}
 
+/* HUD: "매칭" 버튼 (소리 버튼 옆) */
+.matchBtn{
+  width:auto;
+  min-width:56px;
+  padding:0 12px;
+  font-size:12px;
+  letter-spacing:.2px;
+}
+
 /* Core play area: left board + right column */
 .playShell{
   position:relative;

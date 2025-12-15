@@ -1,5 +1,6 @@
 import { initFirebase } from "./firebase.js";
 import { createAudio } from "./audio.js";
+import { initMatchButton } from "./match.js";
 import { StackGame, drawBoard, drawNext, COLS } from "./game.js";
 import { CpuController } from "./cpu.js";
 import { fitCanvases, initTouchControls } from "./touch.js";
@@ -32,6 +33,7 @@ const ui = {
   btnStartCpu: $("btnStartCpu"),
   btnRestart: $("btnRestart"),
   btnSound: $("btnSound"),
+  btnMatch: $("btnMatch"),
   btnFull: $("btnFull"),
 };
 
@@ -47,6 +49,9 @@ ui.btnSound?.addEventListener("click", ()=>{
   audio.toggleMuted();
   syncSoundIcon();
 });
+
+// "매칭" 버튼: 언제든 새로고침 -> 대기자 있으면 다시 연결 시도
+initMatchButton({ buttonEl: ui.btnMatch, audio });
 // start/retry audio on user gestures (mobile: 첫 play()가 실패할 수 있어 재시도 필요)
 window.addEventListener("pointerdown", ()=>audio.gestureStart(), { passive:true });
 window.addEventListener("keydown", ()=>audio.gestureStart());
