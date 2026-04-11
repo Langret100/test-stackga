@@ -1,71 +1,47 @@
-<!doctype html>
-<html lang="ko">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <title>쌓기게임</title>
-  <link rel="icon" href="data:," />
-  <link rel="stylesheet" href="./css/game.css" />
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Gemini Slingshot</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <!-- MediaPipe Dependencies -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <style>
+      body {
+        margin: 0;
+        background-color: #121212; /* Material Dark Background */
+        color: #e3e3e3;
+        overflow: hidden;
+        font-family: 'Roboto', sans-serif;
+      }
+      canvas {
+        transform: scaleX(-1); /* Mirror effect for natural feel */
+      }
+      video {
+        transform: scaleX(-1); /* Mirror effect for natural feel */
+        display: none; /* We draw video to canvas, so hide original */
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@^19.2.1",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.1/",
+    "react/": "https://esm.sh/react@^19.2.1/",
+    "@google/genai": "https://esm.sh/@google/genai@^1.31.0",
+    "lucide-react": "https://esm.sh/lucide-react@^0.556.0"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
 </head>
-<body>
-  <div class="wrap">
-    <!-- 상단 타이틀/연결바 제거: 게임 화면만 -->
-
-    <section class="panel gamePanel" id="game">
-      <div class="hud" id="hud">
-        <div class="hudLeft">
-          <div>점수: <b id="score">0</b></div>
-          <div>레벨: <b id="level">1</b></div>
-          <div>모드: <b id="mode">-</b></div>
-        </div>
-        <div class="hudRight">
-          <button class="iconBtn" id="btnSound" aria-label="소리">🔊</button>
-          <button class="iconBtn matchBtn" id="btnMatch" aria-label="매칭">매칭</button>
-          <button class="iconBtn" id="btnFull" aria-label="전체화면">⛶</button>
-        </div>
-      </div>
-
-      <div class="playShell" id="playShell">
-        <!-- 내 게임 화면: 좌측에 딱 붙음 -->
-        <div class="cardBox boardCard" id="boardCol" aria-label="me">
-          <canvas id="cvMe" width="360" height="720"></canvas>
-        </div>
-
-        <!-- 남는 공간: 상단 NEXT, 아래 상대 화면(보드만) -->
-        <div class="sideCol" id="sideCol" aria-label="side">
-          <div class="cardBox nextCard" id="nextCard" aria-label="next">
-            <div class="cardTag">NEXT</div>
-            <canvas id="cvNext" width="120" height="120"></canvas>
-          </div>
-          <div class="cardBox oppCard" id="oppCard" aria-label="opponent">
-            <!-- 요청: 라벨은 카드 내부 좌측 상단 (NEXT와 동일한 스타일) -->
-            <div class="cardTag" id="oppTag">Player</div>
-            <canvas id="cvOpp" width="120" height="240"></canvas>
-          </div>
-          <!-- 콤보: 카드(네모칸) 없이 빈 공간에 텍스트만 표시 -->
-          <div class="comboArea" id="comboArea" aria-label="combo">
-            <div class="comboNum" id="comboNum">0</div>
-            <div class="comboTxt">Combo!</div>
-          </div>
-        </div>
-
-        <!-- 오버레이(대기/결과) -->
-        <div class="overlay hidden" id="overlay">
-          <div class="overlayCard">
-            <div class="big" id="overlayTitle">대기…</div>
-            <div class="small" id="overlayDesc"></div>
-            <div class="row" id="overlayBtns">
-              <button class="btn" id="btnStartCpu">PC와 시작</button>
-              <button class="btn ghost" id="btnRestart">다시 만들기</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <div id="log" class="hidden"></div>
-  </div>
-
-  <script type="module" src="./js/main.js"></script>
+  <body>
+    <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
 </body>
 </html>

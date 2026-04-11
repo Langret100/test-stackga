@@ -1,11 +1,20 @@
-# 쌓기게임 (메신저 수정 없음)
+<div align="center">
+<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+</div>
 
-## 동작 개요
-- 이 프로젝트는 **게임 페이지만으로** 2인 온라인 대결(실시간)을 구현합니다.
-- 접속 주소는 **하나만** 사용합니다. (예: GitHub Pages 주소)
-- 같은 주소로 들어온 사람을 **2명씩 자동 매칭**해서 최대 **10팀 동시** 플레이가 가능합니다.
-- **20초 내 상대가 매칭되지 않으면 PC 대전(1인 모드)**으로 자동 전환합니다.
+# Run and deploy your AI Studio app
 
-## Firebase
-- Firebase 프로젝트: `web-ghost-c447b` (메신저와 동일)
-- GitHub Pages 배포 시 `__FIREBASE_API_KEY__`는 GitHub Secrets의 `FIREBASE_API_KEY`로 치환되는 구조입니다.
+This contains everything you need to run your app locally.
+
+View your app in AI Studio: https://ai.studio/apps/bundled/gemini_slingshot
+
+## Run Locally
+
+**Prerequisites:**  Node.js
+
+
+1. Install dependencies:
+   `npm install`
+2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+3. Run the app:
+   `npm run dev`
