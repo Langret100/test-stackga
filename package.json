@@ -1,0 +1,25 @@
+{
+  "name": "math-slingshot",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev":     "vite --config src/config/vite.config.ts",
+    "build":   "vite build --config src/config/vite.config.ts",
+    "preview": "vite preview --config src/config/vite.config.ts",
+    "typecheck": "tsc -p src/config/tsconfig.json"
+  },
+  "dependencies": {
+    "react": "^19.2.1",
+    "react-dom": "^19.2.1",
+    "lucide-react": "^0.556.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0"
+  }
+}
