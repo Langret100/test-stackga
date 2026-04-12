@@ -23,6 +23,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
       - name: Inject Firebase API key
         env:
           FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
@@ -35,15 +44,6 @@ jobs:
             -not -path "./.github/*" \
             -not -path "./node_modules/*" \
             -print0 | xargs -0 sed -i "s/__FIREBASE_API_KEY__/${FIREBASE_API_KEY}/g"
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: "npm"
-
-      - name: Install dependencies
-        run: npm ci
 
       - name: Build
         run: npm run build
