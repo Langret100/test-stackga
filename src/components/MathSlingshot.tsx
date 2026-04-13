@@ -21,8 +21,8 @@ const INIT_ROWS               = 2;
 const GRID_ROWS               = 8;
 const SLINGSHOT_BOTTOM_OFFSET = 220;
 const MAX_DRAG_DIST           = 180;
-const MIN_FORCE_MULT          = 0.15;
-const MAX_FORCE_MULT          = 0.45;
+const MIN_FORCE_MULT          = 0.18;
+const MAX_FORCE_MULT          = 0.54;
 const MAX_PARTICLES           = 150;
 const FALL_GRAVITY            = 0.45;
 const QUEUE_SIZE              = 3; // 다음 구슬 큐 크기
@@ -575,9 +575,11 @@ const MathSlingshot: React.FC = () => {
       if(isPlaying&&!isGameOverRef.current&&!isEndless){
         const elapsed=now-gameStartTimeRef.current,interval=getDropInterval(elapsed);
         const sinceLast=now-lastDropTimeRef.current;
-        if(sinceLast>=interval-2000&&shakeTimeRef.current===0)
-          shakeTimeRef.current=now-(sinceLast-(interval-2000));
-        if(sinceLast<interval-2000) shakeTimeRef.current=0;
+        const timeLeft=interval-sinceLast;
+        // 2초 전부터 shake 시작 — 한 번만 세팅
+        if(timeLeft<=2000&&timeLeft>0&&shakeTimeRef.current===0){
+          shakeTimeRef.current=now;
+        }
         if(sinceLast>=interval){
           lastDropTimeRef.current=now; addNewRow(canvas.width);
           shakeTimeRef.current=0; checkGameOver(canvas.height);
@@ -589,12 +591,15 @@ const MathSlingshot: React.FC = () => {
         checkEndlessRefill(canvas.width);
       }
 
-      // ── Shake ──
+      // ── Shake: 2초 동안 점점 강해지는 진동 ──
       let gsx=0,gsy=0;
       if(shakeTimeRef.current>0){
-        const se=now-shakeTimeRef.current,sp=Math.min(se/2000,1.0);
-        const amp=(1.5+sp*4)*Math.sin(se/35);
-        gsx=amp*(Math.random()-.5)*1.5; gsy=amp*Math.abs(Math.sin(se/55))*.4;
+        const se=now-shakeTimeRef.current;
+        const prog=Math.min(se/2000,1.0);
+        const freq=40-prog*10;
+        const amp=(0.8+prog*4.5)*Math.sin(se/freq);
+        gsx=amp*Math.sin(se/13);
+        gsy=amp*0.4*Math.abs(Math.sin(se/17));
       }
 
       // ── Hand tracking ──
