@@ -562,8 +562,14 @@ const MathSlingshot: React.FC = () => {
 
       ctx.save();
       ctx.clearRect(0,0,canvas.width,canvas.height);
-      if(results.image){ctx.drawImage(results.image,0,0,canvas.width,canvas.height);ctx.fillStyle='rgba(18,18,18,0.85)';}
-      else ctx.fillStyle='#121212';
+      if(results.image){
+        // 웹캠만 좌우 반전 (거울 효과) — 텍스트는 정방향 유지
+        ctx.save();
+        ctx.translate(canvas.width,0); ctx.scale(-1,1);
+        ctx.drawImage(results.image,0,0,canvas.width,canvas.height);
+        ctx.restore();
+        ctx.fillStyle='rgba(18,18,18,0.85)';
+      } else ctx.fillStyle='#121212';
       ctx.fillRect(0,0,canvas.width,canvas.height);
 
       const now=performance.now();
@@ -607,11 +613,15 @@ const MathSlingshot: React.FC = () => {
       if(touchActiveRef.current){handPos=touchPosRef.current;pinchDist=0.0;}
       if(results.multiHandLandmarks?.length>0){
         const lm=results.multiHandLandmarks[0],idx=lm[8],thumb=lm[4];
-        handPos={x:(idx.x+thumb.x)*canvas.width/2,y:(idx.y+thumb.y)*canvas.height/2};
+        // CSS mirror 제거로 손 x 좌표를 반전 (거울처럼 자연스럽게)
+        handPos={x:canvas.width-(idx.x+thumb.x)*canvas.width/2,y:(idx.y+thumb.y)*canvas.height/2};
         const dx=idx.x-thumb.x,dy=idx.y-thumb.y; pinchDist=Math.sqrt(dx*dx+dy*dy);
         if(frameCountRef.current%2===0&&window.drawConnectors&&window.drawLandmarks){
+          // landmark도 x 반전해서 그리기
+          ctx.save(); ctx.translate(canvas.width,0); ctx.scale(-1,1);
           window.drawConnectors(ctx,lm,window.HAND_CONNECTIONS,{color:'#669df6',lineWidth:1});
           window.drawLandmarks(ctx,lm,{color:'#aecbfa',lineWidth:1,radius:2});
+          ctx.restore();
         }
         ctx.beginPath(); ctx.arc(handPos.x,handPos.y,18,0,Math.PI*2);
         ctx.strokeStyle=pinchDist<PINCH_THRESHOLD?'#66bb6a':'#ffffff';
