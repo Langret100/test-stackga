@@ -266,6 +266,8 @@ const MathSlingshot: React.FC = () => {
   // 큐 UI용 state (렌더링용)
   const [queueDisplay,      setQueueDisplay]     = useState<BubbleQueueItem[]>([]);
   const [downLandCount,     setDownLandCount]    = useState(0);
+  const [showCombo,         setShowCombo]        = useState(false);
+  const [comboText,         setComboText]        = useState('');
 
   useEffect(()=>{ gameModeRef.current=gameMode; },[gameMode]);
   useEffect(()=>{ gamePhaseRef.current=gamePhase; },[gamePhase]);
@@ -373,69 +375,79 @@ const MathSlingshot: React.FC = () => {
 
   const checkMatches=useCallback((start:Bubble)=>{
     const mult=gameModeRef.current==='hard'?1.5:1.0;
+    let didExplode=false;
 
-    // 규칙3: 같은 색+같은 정답 → 주변 1칸 폭발
-    const sca=new Set<string>([start.id]);
-    const q3=[start]; let qi=0;
-    while(qi<q3.length){
-      const cur=q3[qi++];
-      bubbles.current.filter(b=>b.active&&!sca.has(b.id)&&isNeighbor(cur,b)&&b.color===start.color&&b.answer===start.answer)
-        .forEach(b=>{sca.add(b.id);q3.push(b);});
+    // ── 규칙A: 같은 정답 → 닿은 구슬 2개면 즉시 터짐 (색 무관) ──
+    // start와 인접한 구슬 중 같은 정답인 것 모두 수집 (BFS)
+    const sameAns=new Set<string>([start.id]);
+    const qa=[start]; let qi=0;
+    while(qi<qa.length){
+      const cur=qa[qi++];
+      bubbles.current.filter(b=>b.active&&!sameAns.has(b.id)&&isNeighbor(cur,b)&&b.answer===start.answer)
+        .forEach(b=>{sameAns.add(b.id);qa.push(b);});
     }
-    if(sca.size>=3){
-      const toExp=new Set<string>(sca);
-      sca.forEach(id=>{
-        const b=bubbles.current.find(x=>x.id===id); if(!b) return;
-        bubbles.current.filter(nb=>nb.active&&!toExp.has(nb.id)&&isNeighbor(b,nb)).forEach(nb=>toExp.add(nb.id));
-      });
+    if(sameAns.size>=2){
       let pts=0;
-      toExp.forEach(id=>{
-        const b=bubbles.current.find(x=>x.id===id); if(!b||!b.active) return;
-        b.active=false; createExplosion(b.x,b.y,COLOR_CONFIG[b.color].hex,true);
-        pts+=COLOR_CONFIG[b.color].points*2;
-      });
-      bubbles.current=bubbles.current.filter(b=>b.active);
-      scoreRef.current+=Math.floor(pts*mult); setScore(scoreRef.current);
-      dropFloatingBubbles(); return;
-    }
-
-    // 규칙1: 같은 정답 3개 이상
-    const sa=new Set<string>([start.id]);
-    const q1=[start]; qi=0;
-    while(qi<q1.length){
-      const cur=q1[qi++];
-      bubbles.current.filter(b=>b.active&&!sa.has(b.id)&&isNeighbor(cur,b)&&b.answer===start.answer)
-        .forEach(b=>{sa.add(b.id);q1.push(b);});
-    }
-    if(sa.size>=3){
-      let pts=0;
-      sa.forEach(id=>{
-        const b=bubbles.current.find(x=>x.id===id); if(!b||!b.active) return;
-        b.active=false; createExplosion(b.x,b.y,COLOR_CONFIG[b.color].hex);
-        pts+=COLOR_CONFIG[b.color].points*(sa.size>3?1.5:1.0);
-      });
-      bubbles.current=bubbles.current.filter(b=>b.active);
-      scoreRef.current+=Math.floor(pts*mult); setScore(scoreRef.current);
-      dropFloatingBubbles(); return;
-    }
-
-    // 규칙2: 같은 색 3개 이상
-    const sc=new Set<string>([start.id]);
-    const q2=[start]; qi=0;
-    while(qi<q2.length){
-      const cur=q2[qi++];
-      bubbles.current.filter(b=>b.active&&!sc.has(b.id)&&isNeighbor(cur,b)&&b.color===start.color)
-        .forEach(b=>{sc.add(b.id);q2.push(b);});
-    }
-    if(sc.size>=3){
-      let pts=0;
-      sc.forEach(id=>{
+      sameAns.forEach(id=>{
         const b=bubbles.current.find(x=>x.id===id); if(!b||!b.active) return;
         b.active=false; createExplosion(b.x,b.y,COLOR_CONFIG[b.color].hex);
         pts+=COLOR_CONFIG[b.color].points;
       });
       bubbles.current=bubbles.current.filter(b=>b.active);
       scoreRef.current+=Math.floor(pts*mult); setScore(scoreRef.current);
+      dropFloatingBubbles();
+      didExplode=true;
+    }
+
+    if(didExplode) return;
+
+    // ── 규칙B: 같은 색 3개 이상 연결 (정답 무관) ──
+    const sameCol=new Set<string>([start.id]);
+    const qc=[start]; qi=0;
+    while(qi<qc.length){
+      const cur=qc[qi++];
+      bubbles.current.filter(b=>b.active&&!sameCol.has(b.id)&&isNeighbor(cur,b)&&b.color===start.color)
+        .forEach(b=>{sameCol.add(b.id);qc.push(b);});
+    }
+    if(sameCol.size>=3){
+      // ── 콤보 체크: 같은색 그룹 중 start와 색+정답 모두 같은 구슬이 있으면 Combo! ──
+      const comboMatch=Array.from(sameCol).filter(id=>{
+        const b=bubbles.current.find(x=>x.id===id);
+        return b && b.id!==start.id && b.color===start.color && b.answer===start.answer;
+      });
+      const isCombo=comboMatch.length>0;
+
+      if(isCombo){
+        // 콤보: 그룹 + 주변 1칸 전부 폭발
+        const toExp=new Set<string>(sameCol);
+        sameCol.forEach(id=>{
+          const b=bubbles.current.find(x=>x.id===id); if(!b) return;
+          bubbles.current.filter(nb=>nb.active&&!toExp.has(nb.id)&&isNeighbor(b,nb))
+            .forEach(nb=>toExp.add(nb.id));
+        });
+        let pts=0;
+        toExp.forEach(id=>{
+          const b=bubbles.current.find(x=>x.id===id); if(!b||!b.active) return;
+          b.active=false; createExplosion(b.x,b.y,COLOR_CONFIG[b.color].hex,true);
+          pts+=COLOR_CONFIG[b.color].points*2;
+        });
+        bubbles.current=bubbles.current.filter(b=>b.active);
+        scoreRef.current+=Math.floor(pts*mult); setScore(scoreRef.current);
+        // Combo! 배너
+        setComboText('Combo! 🌟');
+        setShowCombo(true);
+        setTimeout(()=>setShowCombo(false),1500);
+      } else {
+        // 일반 색 매칭
+        let pts=0;
+        sameCol.forEach(id=>{
+          const b=bubbles.current.find(x=>x.id===id); if(!b||!b.active) return;
+          b.active=false; createExplosion(b.x,b.y,COLOR_CONFIG[b.color].hex);
+          pts+=COLOR_CONFIG[b.color].points;
+        });
+        bubbles.current=bubbles.current.filter(b=>b.active);
+        scoreRef.current+=Math.floor(pts*mult); setScore(scoreRef.current);
+      }
       dropFloatingBubbles();
     }
   },[dropFloatingBubbles]);
@@ -1004,6 +1016,20 @@ const MathSlingshot: React.FC = () => {
         </div>
       )}
 
+      {/* Combo 배너 */}
+      {showCombo&&(
+        <div className="absolute inset-0 flex items-center justify-center z-50 pointer-events-none">
+          <div key={comboText} className="px-10 py-5 rounded-3xl text-center"
+            style={{
+              background:'linear-gradient(135deg,rgba(255,180,0,0.92),rgba(255,100,0,0.92))',
+              boxShadow:'0 0 60px rgba(255,160,0,0.7)',
+              animation:'comboPop 1.5s ease-out forwards',
+            }}>
+            <p className="text-4xl font-black text-white" style={{textShadow:'0 0 20px rgba(255,255,255,0.8)'}}>{comboText}</p>
+          </div>
+        </div>
+      )}
+
       {/* Game Over */}
       {isGameOver&&(
         <div className="absolute inset-0 z-50 flex items-center justify-center"
@@ -1120,6 +1146,13 @@ const MathSlingshot: React.FC = () => {
           30%{transform:scale(1.0);opacity:1;}
           80%{transform:scale(1.0);opacity:1;}
           100%{transform:scale(0.6);opacity:0;}
+        }
+        @keyframes comboPop {
+          0%  {transform:scale(0.5) translateY(20px);opacity:0;}
+          20% {transform:scale(1.2) translateY(0);opacity:1;}
+          50% {transform:scale(1.0);opacity:1;}
+          80% {transform:scale(1.0);opacity:1;}
+          100%{transform:scale(0.8) translateY(-30px);opacity:0;}
         }
       `}</style>
     </div>
