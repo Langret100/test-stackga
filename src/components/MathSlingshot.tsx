@@ -13,7 +13,7 @@ import {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const PINCH_THRESHOLD         = 0.05;
-const BUBBLE_RADIUS           = 26;
+const BUBBLE_RADIUS           = 29;
 const ROW_HEIGHT              = BUBBLE_RADIUS * Math.sqrt(3);
 const GRID_COLS               = 11;
 const MAX_BUBBLES_PER_ROW     = 6;
@@ -301,12 +301,19 @@ const MathSlingshot: React.FC = () => {
 
   const makeRow = (row:number,width:number): Bubble[] => {
     const maxCols=row%2!==0?GRID_COLS-1:GRID_COLS;
-    const start=Math.floor(Math.random()*(maxCols-MAX_BUBBLES_PER_ROW+1));
-    const chosen=Array.from({length:MAX_BUBBLES_PER_ROW},(_,i)=>start+i);
+    // 중앙 col 기준으로 후보 선택 (중앙 쪽 우선)
+    const center=Math.floor(maxCols/2);
+    const allCols=Array.from({length:maxCols},(_,i)=>i);
+    // 중앙에서 가까운 순으로 정렬
+    allCols.sort((a,b)=>Math.abs(a-center)-Math.abs(b-center));
+    // 앞쪽(중앙 가까운) 8개 중에서 MAX_BUBBLES_PER_ROW개 랜덤 선택
+    const pool=allCols.slice(0,Math.min(8,maxCols));
+    for(let i=pool.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[pool[i],pool[j]]=[pool[j],pool[i]];}
+    const chosen=pool.slice(0,MAX_BUBBLES_PER_ROW).sort((a,b)=>a-b);
     return chosen.map(c=>{
       const {x,y}=getBubblePos(row,c,width);
       const ans=rndAnswer();
-      return {id:`${row}-${c}-${Date.now()}-${c}`,row,col:c,x,y,
+      return {id:`${row}-${c}-${Date.now()}-${Math.random().toString(36).slice(2)}`,row,col:c,x,y,
         color:ANSWER_COLOR_MAP[ans]||'red',answer:ans,expression:rndExpr(ans),active:true};
     });
   };
@@ -320,13 +327,17 @@ const MathSlingshot: React.FC = () => {
 
   const dropFloatingBubbles=useCallback(()=>{
     const active=bubbles.current.filter(b=>b.active);
+    if(active.length===0) return;
+    // 가장 위에 있는 row를 천장 연결로 간주
+    const minRow=Math.min(...active.map(b=>b.row));
     const connected=new Set<string>();
-    const queue=active.filter(b=>b.row===0);
+    const queue=active.filter(b=>b.row===minRow);
     queue.forEach(b=>connected.add(b.id));
     let qi=0;
     while(qi<queue.length){
       const cur=queue[qi++];
-      active.filter(b=>!connected.has(b.id)&&isNeighbor(cur,b)).forEach(b=>{connected.add(b.id);queue.push(b);});
+      active.filter(b=>!connected.has(b.id)&&isNeighbor(cur,b))
+        .forEach(b=>{connected.add(b.id);queue.push(b);});
     }
     const toFall=active.filter(b=>!connected.has(b.id));
     toFall.forEach(b=>{
@@ -631,22 +642,29 @@ const MathSlingshot: React.FC = () => {
       const isLocked=isGameOverRef.current||!isPlaying;
 
       // ── Slingshot input ──
+      // 규칙: pinch(손가락 모음) 상태에서 구슬 근처 진입 시 잡힘
+      //       손가락 벌리면(pinchDist >= THRESHOLD) 즉시 발사
       if(!isLocked){
-        if(handPos&&pinchDist<PINCH_THRESHOLD&&!isFlying.current){
-          const db=Math.sqrt(Math.pow(handPos.x-ballPos.current.x,2)+Math.pow(handPos.y-ballPos.current.y,2));
-          if(!isPinching.current&&db<120) isPinching.current=true;
-          if(isPinching.current){
-            ballPos.current={x:handPos.x,y:handPos.y};
-            const ddx=ballPos.current.x-anchorPos.current.x,ddy=ballPos.current.y-anchorPos.current.y;
-            const dd=Math.sqrt(ddx*ddx+ddy*ddy);
-            if(dd>MAX_DRAG_DIST){
-              const ang=Math.atan2(ddy,ddx);
-              ballPos.current={x:anchorPos.current.x+Math.cos(ang)*MAX_DRAG_DIST,y:anchorPos.current.y+Math.sin(ang)*MAX_DRAG_DIST};
+        if(!isFlying.current){
+          const isPinched = pinchDist < PINCH_THRESHOLD;
+          if(isPinched && handPos){
+            const db=Math.sqrt(Math.pow(handPos.x-ballPos.current.x,2)+Math.pow(handPos.y-ballPos.current.y,2));
+            // 아직 안 잡았고 + 핀치 상태로 구슬에 가까이 왔을 때만 잡기 시작
+            if(!isPinching.current && db < BUBBLE_RADIUS * 3.5){
+              isPinching.current=true;
             }
-          }
-        } else if(isPinching.current&&(!handPos||pinchDist>=PINCH_THRESHOLD||isLocked)){
-          isPinching.current=false;
-          if(!isLocked){
+            if(isPinching.current){
+              ballPos.current={x:handPos.x,y:handPos.y};
+              const ddx=ballPos.current.x-anchorPos.current.x,ddy=ballPos.current.y-anchorPos.current.y;
+              const dd=Math.sqrt(ddx*ddx+ddy*ddy);
+              if(dd>MAX_DRAG_DIST){
+                const ang=Math.atan2(ddy,ddx);
+                ballPos.current={x:anchorPos.current.x+Math.cos(ang)*MAX_DRAG_DIST,y:anchorPos.current.y+Math.sin(ang)*MAX_DRAG_DIST};
+              }
+            }
+          } else if(isPinching.current){
+            // 손가락 벌렸거나 손 없음 → 발사
+            isPinching.current=false;
             const dx=anchorPos.current.x-ballPos.current.x,dy=anchorPos.current.y-ballPos.current.y;
             const sd=Math.sqrt(dx*dx+dy*dy);
             if(sd>30){
@@ -656,7 +674,8 @@ const MathSlingshot: React.FC = () => {
               ballVel.current={x:dx*vm,y:dy*vm};
             } else ballPos.current={...anchorPos.current};
           }
-        } else if(!isFlying.current&&!isPinching.current){
+        }
+        if(!isFlying.current&&!isPinching.current){
           const dx=anchorPos.current.x-ballPos.current.x,dy=anchorPos.current.y-ballPos.current.y;
           ballPos.current.x+=dx*.15; ballPos.current.y+=dy*.15;
         }
@@ -680,7 +699,7 @@ const MathSlingshot: React.FC = () => {
             if(ballPos.current.y<BUBBLE_RADIUS){hit=true;break;}
             for(const b of bubbles.current){
               if(!b.active) continue;
-              if(Math.pow(ballPos.current.x-b.x,2)+Math.pow(ballPos.current.y-b.y,2)<Math.pow(BUBBLE_RADIUS*1.8,2)){hit=true;break;}
+              if(Math.pow(ballPos.current.x-b.x,2)+Math.pow(ballPos.current.y-b.y,2)<Math.pow(BUBBLE_RADIUS*2.05,2)){hit=true;break;}
             }
             if(hit) break;
           }
@@ -702,15 +721,30 @@ const MathSlingshot: React.FC = () => {
               }
             }
 
-            // 착지 위치 찾기
+            // 착지 위치 찾기: 충돌 지점 가장 가까운 빈 그리드 칸
+            // 단, 너무 멀면 겹침 발생 → BUBBLE_RADIUS*3 이내만 허용
             let bd=Infinity,br=0,bc=0,bx=0,by=0;
+            const MAX_LAND_DIST=BUBBLE_RADIUS*3.2;
+            // 1차: 가까운 거리 내 빈 칸
             for(let r=0;r<GRID_ROWS+5;r++){
               const cols=r%2!==0?GRID_COLS-1:GRID_COLS;
               for(let c=0;c<cols;c++){
                 const p=getBubblePos(r,c,canvas.width);
                 if(bubbles.current.some(b=>b.active&&b.row===r&&b.col===c)) continue;
                 const d=Math.sqrt(Math.pow(ballPos.current.x-p.x,2)+Math.pow(ballPos.current.y-p.y,2));
-                if(d<bd){bd=d;br=r;bc=c;bx=p.x;by=p.y;}
+                if(d<bd&&d<MAX_LAND_DIST){bd=d;br=r;bc=c;bx=p.x;by=p.y;}
+              }
+            }
+            // 2차: 범위 내 없으면 가장 가까운 칸으로 폴백
+            if(bd===Infinity){
+              for(let r=0;r<GRID_ROWS+5;r++){
+                const cols=r%2!==0?GRID_COLS-1:GRID_COLS;
+                for(let c=0;c<cols;c++){
+                  const p=getBubblePos(r,c,canvas.width);
+                  if(bubbles.current.some(b=>b.active&&b.row===r&&b.col===c)) continue;
+                  const d=Math.sqrt(Math.pow(ballPos.current.x-p.x,2)+Math.pow(ballPos.current.y-p.y,2));
+                  if(d<bd){bd=d;br=r;bc=c;bx=p.x;by=p.y;}
+                }
               }
             }
 
