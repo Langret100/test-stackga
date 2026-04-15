@@ -241,8 +241,12 @@ const MathSlingshot: React.FC = () => {
   const frameCountRef     = useRef(0);
   const rafRef            = useRef<number>(0);
 
-  const touchActiveRef = useRef(false);
-  const touchPosRef    = useRef<Point>({x:0,y:0});
+  const touchActiveRef      = useRef(false);
+  const touchPosRef         = useRef<Point>({x:0,y:0});
+  // MediaPipe에서 추출한 최신 손 정보 (rAF 루프에서 사용)
+  const latestHandPos       = useRef<Point|null>(null);
+  const latestPinchDist     = useRef<number>(1.0);
+  const latestLandmarks     = useRef<any>(null);
 
   const fbRef           = useRef<FirebaseServices|null>(null);
   const joinResultRef   = useRef<JoinResult|null>(null);
@@ -553,7 +557,13 @@ const MathSlingshot: React.FC = () => {
 
   const handleStart=(mode:GameModeType='normal')=>{
     setGameModeType(mode); gameModeTypeRef.current=mode;
-    startCountdown(()=>{setGamePhase('playing');gamePhaseRef.current='playing';});
+    startCountdown(()=>{
+      // 실제 게임 시작 시점에 타이머 리셋 (카운트다운 시간 제외)
+      gameStartTimeRef.current=performance.now();
+      lastDropTimeRef.current=performance.now();
+      shakeTimeRef.current=0;
+      setGamePhase('playing');gamePhaseRef.current='playing';
+    });
   };
 
   useEffect(()=>()=>{leaveMultiplayer();},[leaveMultiplayer]);
@@ -573,29 +583,83 @@ const MathSlingshot: React.FC = () => {
 
     let camera:any=null,hands:any=null;
 
+    // ── 웹캠 이미지를 별도 offscreen에 보관 (rAF와 분리) ──
+    const camCanvas=document.createElement('canvas');
+    camCanvas.width=canvas.width; camCanvas.height=canvas.height;
+    const camCtx=camCanvas.getContext('2d');
+    let camReady=false;
+
     const onResults=(results:any)=>{
       setLoading(false);
+      // 웹캠 이미지만 offscreen에 업데이트 (게임 렌더링과 분리)
+      if(results.image&&camCtx){
+        camCanvas.width=canvas.width; camCanvas.height=canvas.height;
+        camCtx.save();
+        camCtx.translate(camCanvas.width,0); camCtx.scale(-1,1);
+        camCtx.drawImage(results.image,0,0,camCanvas.width,camCanvas.height);
+        camCtx.restore();
+        camReady=true;
+      }
+      // 손 정보만 추출 (렌더링 없음)
+      if(results.multiHandLandmarks?.length>0){
+        const lm=results.multiHandLandmarks[0],idx=lm[8],thumb=lm[4];
+        const hx=canvas.width-(idx.x+thumb.x)*canvas.width/2;
+        const hy=(idx.y+thumb.y)*canvas.height/2;
+        const ddx=idx.x-thumb.x,ddy=idx.y-thumb.y;
+        latestHandPos.current={x:hx,y:hy};
+        latestPinchDist.current=Math.sqrt(ddx*ddx+ddy*ddy);
+        latestLandmarks.current=lm;
+      } else {
+        latestHandPos.current=null;
+        latestPinchDist.current=1.0;
+        latestLandmarks.current=null;
+      }
+    };
+
+    // ── rAF 기반 60fps 게임 루프 ──
+    const gameLoop=(now:number)=>{
+      rafRef.current=requestAnimationFrame(gameLoop);
       frameCountRef.current++;
 
       if(canvas.width!==container.clientWidth||canvas.height!==container.clientHeight){
         canvas.width=container.clientWidth; canvas.height=container.clientHeight;
+        camCanvas.width=canvas.width; camCanvas.height=canvas.height;
         anchorPos.current={x:canvas.width/2,y:canvas.height-SLINGSHOT_BOTTOM_OFFSET};
         if(!isFlying.current&&!isPinching.current) ballPos.current={...anchorPos.current};
       }
 
       ctx.save();
       ctx.clearRect(0,0,canvas.width,canvas.height);
-      if(results.image){
-        // 웹캠만 좌우 반전 (거울 효과) — 텍스트는 정방향 유지
-        ctx.save();
-        ctx.translate(canvas.width,0); ctx.scale(-1,1);
-        ctx.drawImage(results.image,0,0,canvas.width,canvas.height);
-        ctx.restore();
+      if(camReady){
+        ctx.drawImage(camCanvas,0,0,canvas.width,canvas.height);
         ctx.fillStyle='rgba(18,18,18,0.85)';
       } else ctx.fillStyle='#121212';
       ctx.fillRect(0,0,canvas.width,canvas.height);
 
-      const now=performance.now();
+      const handPos=latestHandPos.current;
+      const pinchDist=latestPinchDist.current;
+      const lm=latestLandmarks.current;
+
+      // 손 랜드마크 그리기 (offscreen에서 복사한 프레임 위에)
+      if(lm&&window.drawConnectors&&window.drawLandmarks){
+        ctx.save();
+        ctx.globalAlpha=0.45;
+        ctx.translate(canvas.width,0); ctx.scale(-1,1);
+        window.drawConnectors(ctx,lm,window.HAND_CONNECTIONS,{color:'#4a7fff',lineWidth:1});
+        window.drawLandmarks(ctx,lm,{color:'#88aaff',lineWidth:1,radius:1.5});
+        ctx.restore();
+        ctx.globalAlpha=1.0;
+      }
+      if(handPos){
+        ctx.beginPath(); ctx.arc(handPos.x,handPos.y,14,0,Math.PI*2);
+        ctx.strokeStyle=pinchDist<PINCH_THRESHOLD?'rgba(100,220,100,0.9)':'rgba(255,255,255,0.6)';
+        ctx.lineWidth=2; ctx.stroke();
+        if(pinchDist<PINCH_THRESHOLD){
+          ctx.beginPath(); ctx.arc(handPos.x,handPos.y,6,0,Math.PI*2);
+          ctx.fillStyle='rgba(100,220,100,0.7)'; ctx.fill();
+        }
+      }
+
       const isPlaying=gamePhaseRef.current==='playing';
       const isHard=gameModeRef.current==='hard';
       const isEndless=gameModeTypeRef.current==='endless';
@@ -631,26 +695,11 @@ const MathSlingshot: React.FC = () => {
         gsy=amp*0.4*Math.abs(Math.sin(se/17));
       }
 
-      // ── Hand tracking ──
-      let handPos:Point|null=null,pinchDist=1.0;
-      if(touchActiveRef.current){handPos=touchPosRef.current;pinchDist=0.0;}
-      if(results.multiHandLandmarks?.length>0){
-        const lm=results.multiHandLandmarks[0],idx=lm[8],thumb=lm[4];
-        // CSS mirror 제거로 손 x 좌표를 반전 (거울처럼 자연스럽게)
-        handPos={x:canvas.width-(idx.x+thumb.x)*canvas.width/2,y:(idx.y+thumb.y)*canvas.height/2};
-        const dx=idx.x-thumb.x,dy=idx.y-thumb.y; pinchDist=Math.sqrt(dx*dx+dy*dy);
-        if(frameCountRef.current%2===0&&window.drawConnectors&&window.drawLandmarks){
-          // landmark도 x 반전해서 그리기
-          ctx.save(); ctx.translate(canvas.width,0); ctx.scale(-1,1);
-          window.drawConnectors(ctx,lm,window.HAND_CONNECTIONS,{color:'#669df6',lineWidth:1});
-          window.drawLandmarks(ctx,lm,{color:'#aecbfa',lineWidth:1,radius:2});
-          ctx.restore();
-        }
-        ctx.beginPath(); ctx.arc(handPos.x,handPos.y,18,0,Math.PI*2);
-        ctx.strokeStyle=pinchDist<PINCH_THRESHOLD?'#66bb6a':'#ffffff';
-        ctx.lineWidth=2; ctx.stroke();
+      // 터치 입력 우선 (모바일) - handPos/pinchDist는 루프 상단에서 이미 선언
+      if(touchActiveRef.current){
+        latestHandPos.current=touchPosRef.current;
+        latestPinchDist.current=0.0;
       }
-
       const isLocked=isGameOverRef.current||!isPlaying;
 
       // ── Slingshot input ──
@@ -689,7 +738,7 @@ const MathSlingshot: React.FC = () => {
         }
         if(!isFlying.current&&!isPinching.current){
           const dx=anchorPos.current.x-ballPos.current.x,dy=anchorPos.current.y-ballPos.current.y;
-          ballPos.current.x+=dx*.15; ballPos.current.y+=dy*.15;
+          ballPos.current.x+=dx*.2; ballPos.current.y+=dy*.2;
         }
       }
 
@@ -711,7 +760,7 @@ const MathSlingshot: React.FC = () => {
             if(ballPos.current.y<BUBBLE_RADIUS){hit=true;break;}
             for(const b of bubbles.current){
               if(!b.active) continue;
-              if(Math.pow(ballPos.current.x-b.x,2)+Math.pow(ballPos.current.y-b.y,2)<Math.pow(BUBBLE_RADIUS*2.05,2)){hit=true;break;}
+              if(Math.pow(ballPos.current.x-b.x,2)+Math.pow(ballPos.current.y-b.y,2)<Math.pow(BUBBLE_RADIUS*1.95,2)){hit=true;break;}
             }
             if(hit) break;
           }
@@ -736,7 +785,7 @@ const MathSlingshot: React.FC = () => {
             // 착지 위치 찾기: 충돌 지점 가장 가까운 빈 그리드 칸
             // 단, 너무 멀면 겹침 발생 → BUBBLE_RADIUS*3 이내만 허용
             let bd=Infinity,br=0,bc=0,bx=0,by=0;
-            const MAX_LAND_DIST=BUBBLE_RADIUS*3.2;
+            const MAX_LAND_DIST=BUBBLE_RADIUS*2.6;
             // 1차: 가까운 거리 내 빈 칸
             for(let r=0;r<GRID_ROWS+5;r++){
               const cols=r%2!==0?GRID_COLS-1:GRID_COLS;
@@ -831,18 +880,50 @@ const MathSlingshot: React.FC = () => {
       drawMarble(ctx,ballPos.current.x,ballPos.current.y,BUBBLE_RADIUS,curColor,cur.expression,isHard);
       ctx.restore();
 
-      // ── 조준선 ──
+      // ── 조준선: 발사 방향으로 구슬/벽에 닿을 때까지 레이캐스트 ──
       if(isPinching.current&&!isFlying.current){
         const dx=anchorPos.current.x-ballPos.current.x,dy=anchorPos.current.y-ballPos.current.y;
         const len=Math.sqrt(dx*dx+dy*dy);
         if(len>10){
-          ctx.save(); ctx.setLineDash([10,8]);
-          ctx.lineDashOffset=-((now/12)%18);
-          ctx.strokeStyle='rgba(255,255,255,0.35)'; ctx.lineWidth=1.5;
+          const nx=dx/len, ny=dy/len; // 발사 방향 단위벡터
+          // 레이캐스트: 최대 캔버스 크기만큼 진행하며 구슬 충돌 찾기
+          let endX=ballPos.current.x, endY=ballPos.current.y;
+          const stepSize=8;
+          const maxSteps=Math.ceil(canvas.height*1.5/stepSize);
+          let hit=false;
+          for(let s=1;s<=maxSteps;s++){
+            const rx=ballPos.current.x+nx*stepSize*s;
+            const ry=ballPos.current.y+ny*stepSize*s;
+            // 벽 반사 (간단히 x 반사만)
+            if(rx<BUBBLE_RADIUS||rx>canvas.width-BUBBLE_RADIUS){ endX=rx; endY=ry; hit=true; break; }
+            if(ry<BUBBLE_RADIUS){ endX=rx; endY=ry; hit=true; break; }
+            // 구슬 충돌
+            let bHit=false;
+            for(const b of bubbles.current){
+              if(!b.active) continue;
+              if(Math.pow(rx-b.x,2)+Math.pow(ry-b.y,2)<Math.pow(BUBBLE_RADIUS*1.9,2)){
+                endX=rx; endY=ry; bHit=true; hit=true; break;
+              }
+            }
+            if(bHit) break;
+            endX=rx; endY=ry;
+          }
+          ctx.save();
+          ctx.setLineDash([8,6]);
+          ctx.lineDashOffset=-((now/10)%14);
+          ctx.strokeStyle='rgba(255,255,255,0.4)'; ctx.lineWidth=1.5;
+          ctx.shadowBlur=4; ctx.shadowColor='rgba(255,255,255,0.3)';
           ctx.beginPath();
           ctx.moveTo(ballPos.current.x,ballPos.current.y);
-          ctx.lineTo(ballPos.current.x+dx/len*160,ballPos.current.y+dy/len*160);
-          ctx.stroke(); ctx.restore();
+          ctx.lineTo(endX,endY);
+          ctx.stroke();
+          // 끝점 표시
+          if(hit){
+            ctx.setLineDash([]);
+            ctx.beginPath(); ctx.arc(endX,endY,5,0,Math.PI*2);
+            ctx.fillStyle='rgba(255,255,255,0.5)'; ctx.fill();
+          }
+          ctx.restore();
         }
       }
 
@@ -860,7 +941,10 @@ const MathSlingshot: React.FC = () => {
       }
 
       ctx.restore();
-    };
+    }; // end gameLoop
+
+    // rAF 시작
+    rafRef.current=requestAnimationFrame(gameLoop);
 
     if(window.Hands){
       hands=new window.Hands({locateFile:(f:string)=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`});
