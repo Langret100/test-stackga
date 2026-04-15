@@ -247,6 +247,9 @@ const MathSlingshot: React.FC = () => {
   const latestHandPos       = useRef<Point|null>(null);
   const latestPinchDist     = useRef<number>(1.0);
   const latestLandmarks     = useRef<any>(null);
+  // 손 위치 스무딩 (EMA)
+  const smoothHandPos       = useRef<Point|null>(null);
+  const smoothPinchDist     = useRef<number>(1.0);
 
   const fbRef           = useRef<FirebaseServices|null>(null);
   const joinResultRef   = useRef<JoinResult|null>(null);
@@ -606,8 +609,18 @@ const MathSlingshot: React.FC = () => {
         const hx=canvas.width-(idx.x+thumb.x)*canvas.width/2;
         const hy=(idx.y+thumb.y)*canvas.height/2;
         const ddx=idx.x-thumb.x,ddy=idx.y-thumb.y;
-        latestHandPos.current={x:hx,y:hy};
-        latestPinchDist.current=Math.sqrt(ddx*ddx+ddy*ddy);
+        const rawPinch=Math.sqrt(ddx*ddx+ddy*ddy);
+        // EMA 스무딩: α=0.25 (낮을수록 더 부드럽지만 지연 증가)
+        const ALPHA=0.25;
+        if(smoothHandPos.current){
+          smoothHandPos.current={
+            x:smoothHandPos.current.x*(1-ALPHA)+hx*ALPHA,
+            y:smoothHandPos.current.y*(1-ALPHA)+hy*ALPHA,
+          };
+        } else { smoothHandPos.current={x:hx,y:hy}; }
+        smoothPinchDist.current=smoothPinchDist.current*(1-ALPHA)+rawPinch*ALPHA;
+        latestHandPos.current=smoothHandPos.current;
+        latestPinchDist.current=smoothPinchDist.current;
         latestLandmarks.current=lm;
       } else {
         latestHandPos.current=null;
@@ -880,47 +893,77 @@ const MathSlingshot: React.FC = () => {
       drawMarble(ctx,ballPos.current.x,ballPos.current.y,BUBBLE_RADIUS,curColor,cur.expression,isHard);
       ctx.restore();
 
-      // ── 조준선: 발사 방향으로 구슬/벽에 닿을 때까지 레이캐스트 ──
+      // ── 조준선: 벽 반사 포함 레이캐스트 (최대 2 세그먼트) ──
       if(isPinching.current&&!isFlying.current){
         const dx=anchorPos.current.x-ballPos.current.x,dy=anchorPos.current.y-ballPos.current.y;
         const len=Math.sqrt(dx*dx+dy*dy);
         if(len>10){
-          const nx=dx/len, ny=dy/len; // 발사 방향 단위벡터
-          // 레이캐스트: 최대 캔버스 크기만큼 진행하며 구슬 충돌 찾기
-          let endX=ballPos.current.x, endY=ballPos.current.y;
-          const stepSize=8;
-          const maxSteps=Math.ceil(canvas.height*1.5/stepSize);
-          let hit=false;
-          for(let s=1;s<=maxSteps;s++){
-            const rx=ballPos.current.x+nx*stepSize*s;
-            const ry=ballPos.current.y+ny*stepSize*s;
-            // 벽 반사 (간단히 x 반사만)
-            if(rx<BUBBLE_RADIUS||rx>canvas.width-BUBBLE_RADIUS){ endX=rx; endY=ry; hit=true; break; }
-            if(ry<BUBBLE_RADIUS){ endX=rx; endY=ry; hit=true; break; }
-            // 구슬 충돌
-            let bHit=false;
-            for(const b of bubbles.current){
-              if(!b.active) continue;
-              if(Math.pow(rx-b.x,2)+Math.pow(ry-b.y,2)<Math.pow(BUBBLE_RADIUS*1.9,2)){
-                endX=rx; endY=ry; bHit=true; hit=true; break;
+          // 레이캐스트 함수: 시작점+방향 → {end, bounced, bouncePoint}
+          const raycast=(sx:number,sy:number,vx:number,vy:number,skipFirst=false):{ex:number,ey:number,hit:boolean,wallHit:boolean,wx:number,wy:number}=>{
+            const stepSize=6;
+            const maxDist=canvas.height*2;
+            const steps=Math.ceil(maxDist/stepSize);
+            let ex=sx,ey=sy,wx=sx,wy=sy;
+            for(let s=1;s<=steps;s++){
+              const rx=sx+vx*stepSize*s, ry=sy+vy*stepSize*s;
+              if(ry<BUBBLE_RADIUS) return {ex:rx,ey:ry,hit:true,wallHit:false,wx,wy};
+              // 좌우 벽 반사
+              if(rx<BUBBLE_RADIUS||rx>canvas.width-BUBBLE_RADIUS){
+                return {ex:rx,ey:ry,hit:false,wallHit:true,wx:rx,wy:ry};
               }
+              // 구슬 충돌
+              if(!skipFirst||s>1){
+                for(const b of bubbles.current){
+                  if(!b.active) continue;
+                  if(Math.pow(rx-b.x,2)+Math.pow(ry-b.y,2)<Math.pow(BUBBLE_RADIUS*1.85,2))
+                    return {ex:rx,ey:ry,hit:true,wallHit:false,wx,wy};
+                }
+              }
+              ex=rx; ey=ry; wx=rx; wy=ry;
             }
-            if(bHit) break;
-            endX=rx; endY=ry;
-          }
+            return {ex,ey,hit:false,wallHit:false,wx,wy};
+          };
+
+          const nx=dx/len, ny=dy/len;
+          const seg1=raycast(ballPos.current.x,ballPos.current.y,nx,ny);
+
           ctx.save();
           ctx.setLineDash([8,6]);
           ctx.lineDashOffset=-((now/10)%14);
-          ctx.strokeStyle='rgba(255,255,255,0.4)'; ctx.lineWidth=1.5;
-          ctx.shadowBlur=4; ctx.shadowColor='rgba(255,255,255,0.3)';
+          ctx.strokeStyle='rgba(255,255,255,0.45)'; ctx.lineWidth=1.5;
+          ctx.shadowBlur=4; ctx.shadowColor='rgba(255,255,255,0.25)';
+
+          // 첫 번째 선분
           ctx.beginPath();
           ctx.moveTo(ballPos.current.x,ballPos.current.y);
-          ctx.lineTo(endX,endY);
+          ctx.lineTo(seg1.ex,seg1.ey);
           ctx.stroke();
-          // 끝점 표시
-          if(hit){
+
+          // 벽에 튕긴 경우 두 번째 선분
+          if(seg1.wallHit){
+            // 반사: x방향만 뒤집기
+            const rnx=-nx, rny=ny;
+            const seg2=raycast(seg1.ex,seg1.ey,rnx,rny,true);
+            ctx.globalAlpha=0.65;
+            ctx.beginPath();
+            ctx.moveTo(seg1.ex,seg1.ey);
+            ctx.lineTo(seg2.ex,seg2.ey);
+            ctx.stroke();
+            // 두 번째 착지점
+            if(seg2.hit||!seg2.wallHit){
+              ctx.setLineDash([]);
+              ctx.globalAlpha=0.6;
+              ctx.beginPath(); ctx.arc(seg2.ex,seg2.ey,5,0,Math.PI*2);
+              ctx.fillStyle='rgba(255,200,100,0.7)'; ctx.fill();
+            }
+            ctx.globalAlpha=1.0;
+            // 벽 반사점 표시
             ctx.setLineDash([]);
-            ctx.beginPath(); ctx.arc(endX,endY,5,0,Math.PI*2);
+            ctx.beginPath(); ctx.arc(seg1.ex,seg1.ey,4,0,Math.PI*2);
+            ctx.fillStyle='rgba(255,255,255,0.4)'; ctx.fill();
+          } else if(seg1.hit){
+            ctx.setLineDash([]);
+            ctx.beginPath(); ctx.arc(seg1.ex,seg1.ey,5,0,Math.PI*2);
             ctx.fillStyle='rgba(255,255,255,0.5)'; ctx.fill();
           }
           ctx.restore();
@@ -1056,10 +1099,11 @@ const MathSlingshot: React.FC = () => {
                 START!
               </button>
               <button onClick={()=>handleStart('endless')}
-                className="py-4 rounded-2xl font-black text-lg transition-all active:scale-95 flex flex-col items-center justify-center gap-0.5"
+                disabled={multiStatus!=='idle'}
+                className="py-4 rounded-2xl font-black text-lg transition-all active:scale-95 flex flex-col items-center justify-center gap-0.5 disabled:opacity-40 disabled:cursor-not-allowed"
                 style={{background:'linear-gradient(135deg,#ab47bc,#7b1fa2)',color:'white',boxShadow:'0 0 20px rgba(171,71,188,0.4)'}}>
                 <span className="flex items-center gap-1"><InfinityIcon className="w-4 h-4"/>무제한</span>
-                <span className="text-[10px] font-normal opacity-75">클리어하면 새 줄 등장</span>
+                <span className="text-[10px] font-normal opacity-75">{multiStatus!=='idle'?'매칭 중 비활성':'클리어하면 새 줄 등장'}</span>
               </button>
             </div>
           </div>
@@ -1161,7 +1205,15 @@ const MathSlingshot: React.FC = () => {
 
       {/* HUD - Multi + X */}
       <div className="absolute top-3 right-3 z-40 flex items-center gap-1.5">
-        <button onClick={multiStatus==='idle'?startMultiplayer:leaveMultiplayer}
+        <button onClick={()=>{
+            if(multiStatus==='idle'){
+              // 무제한 모드면 일반 모드로 전환 후 매칭
+              if(gameModeTypeRef.current==='endless'){
+                setGameModeType('normal'); gameModeTypeRef.current='normal';
+              }
+              startMultiplayer();
+            } else { leaveMultiplayer(); }
+          }}
           className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all active:scale-95 backdrop-blur-sm"
           style={{
             background:multiStatus==='idle'?'rgba(30,60,120,0.75)':multiStatus==='searching'?'rgba(50,30,100,0.85)':'rgba(20,80,40,0.85)',
@@ -1184,14 +1236,15 @@ const MathSlingshot: React.FC = () => {
       {/* 다음 구슬 큐 (하단) */}
       {gamePhase==='playing'&&!isGameOver&&(
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-40">
-          <div className="bg-[#1e1e1e]/90 px-5 py-3 rounded-[24px] border border-[#444746] shadow-2xl flex items-center gap-3 backdrop-blur-sm">
+          <div className="bg-[#1e1e1e]/90 px-3 py-2 sm:px-5 sm:py-3 rounded-[24px] border border-[#444746] shadow-2xl flex items-center gap-2 sm:gap-3 backdrop-blur-sm">
             <div className="flex flex-col items-center gap-0.5">
               <p className="text-[9px] text-[#757575] uppercase tracking-wider">다음 구슬</p>
               <p className="text-[8px] text-[#555]">→ → →</p>
             </div>
             {queueDisplay.map((item,i)=>{
               const cfg=COLOR_CONFIG[item.color];
-              const size=i===0?46:i===1?38:30;
+              const isMobileView=window.innerWidth<600;
+              const size=isMobileView?(i===0?36:i===1?30:24):(i===0?46:i===1?38:30);
               const opacity=i===0?1.0:i===1?0.75:0.5;
               return (
                 <div key={i} className="flex flex-col items-center gap-0.5"
