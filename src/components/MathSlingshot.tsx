@@ -13,13 +13,23 @@ import {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const PINCH_THRESHOLD         = 0.05;
-const BUBBLE_RADIUS           = 29;
-const ROW_HEIGHT              = BUBBLE_RADIUS * Math.sqrt(3);
+const BUBBLE_RADIUS_MAX       = 29;
+const BUBBLE_RADIUS_MIN       = 18;
 const GRID_COLS               = 11;
 const MAX_BUBBLES_PER_ROW     = 6;
 const INIT_ROWS               = 2;
 const GRID_ROWS               = 8;
-const SLINGSHOT_BOTTOM_OFFSET = 220;
+const SLINGSHOT_BOTTOM_OFFSET = 170; // 발사대 올림
+
+// 화면 너비에 맞는 구슬 반지름 계산 (모바일 대응)
+const calcRadius = (width: number): number => {
+  // GRID_COLS=11칸 + 양쪽 여백이 r씩 → 전체 = (11*2 + 1)*r = 23r
+  const r = Math.floor(width / 23);
+  return Math.max(BUBBLE_RADIUS_MIN, Math.min(BUBBLE_RADIUS_MAX, r));
+};
+// 렌더링 시 동적으로 쓸 수 있도록 전역 캐시
+let BUBBLE_RADIUS = BUBBLE_RADIUS_MAX;
+let ROW_HEIGHT = BUBBLE_RADIUS * Math.sqrt(3);
 const MAX_DRAG_DIST           = 180;
 const MIN_FORCE_MULT          = 0.18;
 const MAX_FORCE_MULT          = 0.54;
@@ -96,12 +106,18 @@ const drawMarble = (
   const g=ctx.createRadialGradient(cx-r*.3,cy-r*.3,r*.05,cx,cy,r);
   g.addColorStop(0,'#ffffff'); g.addColorStop(0.2,adj(base,50));
   g.addColorStop(0.7,base); g.addColorStop(1,dark);
+  // 구슬 본체만 살짝 투명 (청량한 유리 느낌)
+  const sphereAlpha = isHard ? 0.82 : 0.78;
+  ctx.globalAlpha = alpha * sphereAlpha;
   ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.fillStyle=g; ctx.fill();
   ctx.shadowColor='transparent'; ctx.shadowBlur=0; ctx.shadowOffsetX=0; ctx.shadowOffsetY=0;
-  ctx.strokeStyle=dark+'88'; ctx.lineWidth=1; ctx.stroke();
+  ctx.strokeStyle=dark+'66'; ctx.lineWidth=1; ctx.stroke();
   const hg=ctx.createRadialGradient(cx-r*.32,cy-r*.38,0,cx-r*.2,cy-r*.2,r*.5);
-  hg.addColorStop(0,'rgba(255,255,255,0.65)'); hg.addColorStop(1,'rgba(255,255,255,0)');
+  hg.addColorStop(0,'rgba(255,255,255,0.7)'); hg.addColorStop(1,'rgba(255,255,255,0)');
+  ctx.globalAlpha = alpha * sphereAlpha;
   ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.fillStyle=hg; ctx.fill();
+  // 텍스트는 불투명하게 복원
+  ctx.globalAlpha = alpha;
   const len=expression.length;
   const fs=len<=2?r*.78:len<=4?r*.60:len<=6?r*.50:r*.42;
   ctx.textAlign='center'; ctx.textBaseline='middle';
@@ -301,10 +317,12 @@ const MathSlingshot: React.FC = () => {
 
   // ── Grid ──────────────────────────────────────────────────────────────────
   const getBubblePos = (row:number,col:number,width:number) => {
-    const xOffset=(width-GRID_COLS*BUBBLE_RADIUS*2)/2+BUBBLE_RADIUS;
+    const r=calcRadius(width);
+    const rh=r*Math.sqrt(3);
+    const xOffset=(width-GRID_COLS*r*2)/2+r;
     return {
-      x: xOffset+col*(BUBBLE_RADIUS*2)+(row%2!==0?BUBBLE_RADIUS:0),
-      y: BUBBLE_RADIUS+row*ROW_HEIGHT,
+      x: xOffset+col*(r*2)+(row%2!==0?r:0),
+      y: r+row*rh,
     };
   };
 
@@ -470,8 +488,9 @@ const MathSlingshot: React.FC = () => {
   };
 
   const checkGameOver=(ch:number)=>{
-    const slY=ch-SLINGSHOT_BOTTOM_OFFSET-BUBBLE_RADIUS*3;
-    if(bubbles.current.some(b=>b.active&&b.y+BUBBLE_RADIUS>=slY)){
+    const r=calcRadius(canvasRef.current?.width||800);
+    const slY=ch-SLINGSHOT_BOTTOM_OFFSET-r*3;
+    if(bubbles.current.some(b=>b.active&&b.y+r>=slY)){
       isGameOverRef.current=true; setFinalScore(scoreRef.current);
       setIsGameOver(true); setGamePhase('over'); gamePhaseRef.current='over';
     }
@@ -673,6 +692,9 @@ const MathSlingshot: React.FC = () => {
         }
       }
 
+      // 매 프레임 화면 크기에 맞게 구슬 반지름 업데이트
+      BUBBLE_RADIUS=calcRadius(canvas.width);
+      ROW_HEIGHT=BUBBLE_RADIUS*Math.sqrt(3);
       const isPlaying=gamePhaseRef.current==='playing';
       const isHard=gameModeRef.current==='hard';
       const isEndless=gameModeTypeRef.current==='endless';
@@ -773,7 +795,7 @@ const MathSlingshot: React.FC = () => {
             if(ballPos.current.y<BUBBLE_RADIUS){hit=true;break;}
             for(const b of bubbles.current){
               if(!b.active) continue;
-              if(Math.pow(ballPos.current.x-b.x,2)+Math.pow(ballPos.current.y-b.y,2)<Math.pow(BUBBLE_RADIUS*1.95,2)){hit=true;break;}
+              if(Math.pow(ballPos.current.x-b.x,2)+Math.pow(ballPos.current.y-b.y,2)<Math.pow(BUBBLE_RADIUS*1.9,2)){hit=true;break;}
             }
             if(hit) break;
           }
@@ -798,7 +820,7 @@ const MathSlingshot: React.FC = () => {
             // 착지 위치 찾기: 충돌 지점 가장 가까운 빈 그리드 칸
             // 단, 너무 멀면 겹침 발생 → BUBBLE_RADIUS*3 이내만 허용
             let bd=Infinity,br=0,bc=0,bx=0,by=0;
-            const MAX_LAND_DIST=BUBBLE_RADIUS*2.6;
+            const MAX_LAND_DIST=calcRadius(canvas.width)*2.4;
             // 1차: 가까운 거리 내 빈 칸
             for(let r=0;r<GRID_ROWS+5;r++){
               const cols=r%2!==0?GRID_COLS-1:GRID_COLS;
