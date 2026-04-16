@@ -19,7 +19,7 @@ const GRID_COLS               = 11;
 const MAX_BUBBLES_PER_ROW     = 6;
 const INIT_ROWS               = 2;
 const GRID_ROWS               = 8;
-const SLINGSHOT_BOTTOM_OFFSET = 170; // 발사대 올림
+const SLINGSHOT_BOTTOM_OFFSET = 120; // 발사대 올림
 
 // 화면 너비에 맞는 구슬 반지름 계산 (모바일 대응)
 const calcRadius = (width: number): number => {
@@ -738,18 +738,24 @@ const MathSlingshot: React.FC = () => {
       const isLocked=isGameOverRef.current||!isPlaying;
 
       // ── Slingshot input ──
-      // 규칙: pinch(손가락 모음) 상태에서 구슬 근처 진입 시 잡힘
-      //       손가락 벌리면(pinchDist >= THRESHOLD) 즉시 발사
+      // 잡기: 핀치(손가락 모음) 상태로 구슬에 닿으면 잡힘
+      // 당기기: 핀치 유지하며 이동
+      // 발사: 손가락을 확실히 벌렸을 때만 (RELEASE_THRESHOLD)
+      // 손이 사라지면: 그냥 리셋 (발사 안 함)
+      const RELEASE_THRESHOLD = PINCH_THRESHOLD * 2.5; // 0.125 - 확실히 벌린 상태
       if(!isLocked){
         if(!isFlying.current){
           const isPinched = pinchDist < PINCH_THRESHOLD;
+          const isReleased = pinchDist > RELEASE_THRESHOLD; // 확실히 벌린 상태
+
           if(isPinched && handPos){
+            // 핀치 상태 + 구슬 근처 → 잡기 시작
             const db=Math.sqrt(Math.pow(handPos.x-ballPos.current.x,2)+Math.pow(handPos.y-ballPos.current.y,2));
-            // 아직 안 잡았고 + 핀치 상태로 구슬에 가까이 왔을 때만 잡기 시작
-            if(!isPinching.current && db < BUBBLE_RADIUS * 3.5){
+            if(!isPinching.current && db < BUBBLE_RADIUS * 2.8){
               isPinching.current=true;
             }
             if(isPinching.current){
+              // 당기는 중: 구슬 위치 = 손 위치
               ballPos.current={x:handPos.x,y:handPos.y};
               const ddx=ballPos.current.x-anchorPos.current.x,ddy=ballPos.current.y-anchorPos.current.y;
               const dd=Math.sqrt(ddx*ddx+ddy*ddy);
@@ -759,16 +765,23 @@ const MathSlingshot: React.FC = () => {
               }
             }
           } else if(isPinching.current){
-            // 손가락 벌렸거나 손 없음 → 발사
-            isPinching.current=false;
-            const dx=anchorPos.current.x-ballPos.current.x,dy=anchorPos.current.y-ballPos.current.y;
-            const sd=Math.sqrt(dx*dx+dy*dy);
-            if(sd>30){
-              isFlying.current=true; flightStart.current=now;
-              const pr=Math.min(sd/MAX_DRAG_DIST,1.0);
-              const vm=MIN_FORCE_MULT+(MAX_FORCE_MULT-MIN_FORCE_MULT)*(pr*pr);
-              ballVel.current={x:dx*vm,y:dy*vm};
-            } else ballPos.current={...anchorPos.current};
+            if(!handPos){
+              // 손이 사라진 경우 → 발사 안 하고 원위치 복귀
+              isPinching.current=false;
+              ballPos.current={...anchorPos.current};
+            } else if(isReleased){
+              // 손가락 확실히 벌린 경우 → 발사
+              isPinching.current=false;
+              const dx=anchorPos.current.x-ballPos.current.x,dy=anchorPos.current.y-ballPos.current.y;
+              const sd=Math.sqrt(dx*dx+dy*dy);
+              if(sd>30){
+                isFlying.current=true; flightStart.current=now;
+                const pr=Math.min(sd/MAX_DRAG_DIST,1.0);
+                const vm=MIN_FORCE_MULT+(MAX_FORCE_MULT-MIN_FORCE_MULT)*(pr*pr);
+                ballVel.current={x:dx*vm,y:dy*vm};
+              } else ballPos.current={...anchorPos.current};
+            }
+            // 중간 상태 (PINCH_THRESHOLD ~ RELEASE_THRESHOLD): 아직 발사 안 함, 당기기 유지
           }
         }
         if(!isFlying.current&&!isPinching.current){
