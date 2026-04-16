@@ -19,7 +19,7 @@ const GRID_COLS               = 11;
 const MAX_BUBBLES_PER_ROW     = 6;
 const INIT_ROWS               = 2;
 const GRID_ROWS               = 8;
-const SLINGSHOT_BOTTOM_OFFSET = 120; // 발사대 올림
+const SLINGSHOT_BOTTOM_OFFSET = 260; // 큐UI(90) + 구슬2개(~120) + 여유(50)
 
 // 화면 너비에 맞는 구슬 반지름 계산 (모바일 대응)
 const calcRadius = (width: number): number => {
@@ -489,7 +489,8 @@ const MathSlingshot: React.FC = () => {
 
   const checkGameOver=(ch:number)=>{
     const r=calcRadius(canvasRef.current?.width||800);
-    const slY=ch-SLINGSHOT_BOTTOM_OFFSET-r*3;
+    // 경계선 = 발사대(anchor) 보다 구슬 2개 반지름 위
+    const slY=ch-SLINGSHOT_BOTTOM_OFFSET-r*2;
     if(bubbles.current.some(b=>b.active&&b.y+r>=slY)){
       isGameOverRef.current=true; setFinalScore(scoreRef.current);
       setIsGameOver(true); setGamePhase('over'); gamePhaseRef.current='over';
@@ -905,7 +906,7 @@ const MathSlingshot: React.FC = () => {
       // ── Wavy danger line (무제한 모드는 없음) ──
       if(!isEndless){
         waveOffsetRef.current+=.04;
-        const slY=canvas.height-SLINGSHOT_BOTTOM_OFFSET-BUBBLE_RADIUS*3;
+        const slY=canvas.height-SLINGSHOT_BOTTOM_OFFSET-BUBBLE_RADIUS*2;
         ctx.save();
         ctx.beginPath(); ctx.moveTo(0,slY);
         for(let wx=0;wx<=canvas.width;wx+=6) ctx.lineTo(wx,slY+Math.sin(wx/28+waveOffsetRef.current)*3.5);
