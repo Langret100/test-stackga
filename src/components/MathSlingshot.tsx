@@ -12,7 +12,7 @@ import {
 } from '../services/firebaseService';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const PINCH_THRESHOLD         = 0.05;
+const PINCH_THRESHOLD         = 0.12;
 const BUBBLE_RADIUS_MAX       = 29;
 const BUBBLE_RADIUS_MIN       = 18;
 const GRID_COLS               = 11;
@@ -743,7 +743,7 @@ const MathSlingshot: React.FC = () => {
       // 당기기: 핀치 유지하며 이동
       // 발사: 손가락을 확실히 벌렸을 때만 (RELEASE_THRESHOLD)
       // 손이 사라지면: 그냥 리셋 (발사 안 함)
-      const RELEASE_THRESHOLD = PINCH_THRESHOLD * 2.5; // 0.125 - 확실히 벌린 상태
+      const RELEASE_THRESHOLD = PINCH_THRESHOLD * 1.5; // 0.125 - 확실히 벌린 상태
       if(!isLocked){
         if(!isFlying.current){
           const isPinched = pinchDist < PINCH_THRESHOLD;
@@ -752,7 +752,7 @@ const MathSlingshot: React.FC = () => {
           if(isPinched && handPos){
             // 핀치 상태 + 구슬 근처 → 잡기 시작
             const db=Math.sqrt(Math.pow(handPos.x-ballPos.current.x,2)+Math.pow(handPos.y-ballPos.current.y,2));
-            if(!isPinching.current && db < BUBBLE_RADIUS * 2.8){
+            if(!isPinching.current && db < BUBBLE_RADIUS * 5.0){
               isPinching.current=true;
             }
             if(isPinching.current){
