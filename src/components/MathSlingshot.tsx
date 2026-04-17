@@ -743,7 +743,7 @@ const MathSlingshot: React.FC = () => {
       // 당기기: 핀치 유지하며 이동
       // 발사: 손가락을 확실히 벌렸을 때만 (RELEASE_THRESHOLD)
       // 손이 사라지면: 그냥 리셋 (발사 안 함)
-      const RELEASE_THRESHOLD = PINCH_THRESHOLD * 1.5; // 0.125 - 확실히 벌린 상태
+      const RELEASE_THRESHOLD = PINCH_THRESHOLD * 1.25; // 0.125 - 확실히 벌린 상태
       if(!isLocked){
         if(!isFlying.current){
           const isPinched = pinchDist < PINCH_THRESHOLD;
