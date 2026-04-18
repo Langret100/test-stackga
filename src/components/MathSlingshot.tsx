@@ -89,6 +89,51 @@ const makeQueueItem = (): BubbleQueueItem => {
   return { answer:ans, color:ANSWER_COLOR_MAP[ans]||'red', expression:rndExpr(ans) };
 };
 
+// ─── Marble sprite cache (오프스크린 캔버스 캐시 — 색+반지름 조합당 1회 생성) ────
+const marbleCache = new Map<string, HTMLCanvasElement>();
+const getMarbleSprite = (r:number, color:BubbleColor, isHard:boolean): HTMLCanvasElement => {
+  const key = `${r}_${color}_${isHard?1:0}`;
+  const cached = marbleCache.get(key);
+  if(cached) return cached;
+
+  const pad = 10; // 그림자 번짐 여유
+  const size = (r + pad) * 2;
+  const oc = document.createElement('canvas');
+  oc.width = size; oc.height = size;
+  const oc2 = oc.getContext('2d')!;
+  const cx = size/2, cy = size/2;
+
+  const cfg = COLOR_CONFIG[color];
+  const base = isHard ? '#5c5c7a' : cfg.hex;
+  const dark = isHard ? '#2a2a44' : cfg.dark;
+
+  // 그림자 (캐시 안에서 한 번만)
+  oc2.shadowColor = `${dark}99`;
+  oc2.shadowBlur = 6;
+  oc2.shadowOffsetX = 2;
+  oc2.shadowOffsetY = 3;
+
+  // 본체 그라데이션
+  const g = oc2.createRadialGradient(cx-r*.3, cy-r*.3, r*.05, cx, cy, r);
+  g.addColorStop(0,'#ffffff'); g.addColorStop(0.2, adj(base,50));
+  g.addColorStop(0.7, base); g.addColorStop(1, dark);
+  const sphereAlpha = isHard ? 0.82 : 0.78;
+  oc2.globalAlpha = sphereAlpha;
+  oc2.beginPath(); oc2.arc(cx,cy,r,0,Math.PI*2); oc2.fillStyle=g; oc2.fill();
+
+  // 그림자 끄고 테두리/하이라이트
+  oc2.shadowColor = 'transparent'; oc2.shadowBlur = 0; oc2.shadowOffsetX = 0; oc2.shadowOffsetY = 0;
+  oc2.strokeStyle=dark+'66'; oc2.lineWidth=1; oc2.stroke();
+
+  // 하이라이트
+  const hg = oc2.createRadialGradient(cx-r*.32, cy-r*.38, 0, cx-r*.2, cy-r*.2, r*.5);
+  hg.addColorStop(0,'rgba(255,255,255,0.7)'); hg.addColorStop(1,'rgba(255,255,255,0)');
+  oc2.beginPath(); oc2.arc(cx,cy,r,0,Math.PI*2); oc2.fillStyle=hg; oc2.fill();
+
+  marbleCache.set(key, oc);
+  return oc;
+};
+
 // ─── Marble drawing ───────────────────────────────────────────────────────────
 const drawMarble = (
   ctx:CanvasRenderingContext2D,
@@ -96,40 +141,31 @@ const drawMarble = (
   color:BubbleColor,expression:string,
   isHard:boolean,alpha=1.0,sx=0,sy=0
 ) => {
+  const cx=x+sx, cy=y+sy;
+  const sprite = getMarbleSprite(r, color, isHard);
+  const size = sprite.width;
+
   ctx.save();
   if(alpha<1) ctx.globalAlpha=alpha;
-  const cx=x+sx,cy=y+sy;
-  const cfg=COLOR_CONFIG[color];
-  const base=isHard?'#5c5c7a':cfg.hex;
-  const dark=isHard?'#2a2a44':cfg.dark;
-  ctx.shadowColor=`${dark}99`; ctx.shadowBlur=6; ctx.shadowOffsetX=2; ctx.shadowOffsetY=3;
-  const g=ctx.createRadialGradient(cx-r*.3,cy-r*.3,r*.05,cx,cy,r);
-  g.addColorStop(0,'#ffffff'); g.addColorStop(0.2,adj(base,50));
-  g.addColorStop(0.7,base); g.addColorStop(1,dark);
-  // 구슬 본체만 살짝 투명 (청량한 유리 느낌)
-  const sphereAlpha = isHard ? 0.82 : 0.78;
-  ctx.globalAlpha = alpha * sphereAlpha;
-  ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.fillStyle=g; ctx.fill();
-  ctx.shadowColor='transparent'; ctx.shadowBlur=0; ctx.shadowOffsetX=0; ctx.shadowOffsetY=0;
-  ctx.strokeStyle=dark+'66'; ctx.lineWidth=1; ctx.stroke();
-  const hg=ctx.createRadialGradient(cx-r*.32,cy-r*.38,0,cx-r*.2,cy-r*.2,r*.5);
-  hg.addColorStop(0,'rgba(255,255,255,0.7)'); hg.addColorStop(1,'rgba(255,255,255,0)');
-  ctx.globalAlpha = alpha * sphereAlpha;
-  ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.fillStyle=hg; ctx.fill();
-  // 텍스트는 불투명하게 복원
+  ctx.drawImage(sprite, cx - size/2, cy - size/2);
+
+  // 텍스트 (매번 그려야 하지만 shadowBlur 없이)
+  const cfg = COLOR_CONFIG[color];
+  const dark = isHard ? '#2a2a44' : cfg.dark;
   ctx.globalAlpha = alpha;
   const len=expression.length;
   const fs=len<=2?r*.78:len<=4?r*.60:len<=6?r*.50:r*.42;
   ctx.textAlign='center'; ctx.textBaseline='middle';
   ctx.font=`900 ${fs}px 'Arial Black',sans-serif`;
-  ctx.shadowColor='rgba(0,0,0,0.5)'; ctx.shadowBlur=2; ctx.shadowOffsetX=1; ctx.shadowOffsetY=1;
-  ctx.strokeStyle=`${dark}66`; ctx.lineWidth=fs*.18; ctx.lineJoin='round';
+  ctx.strokeStyle=`${dark}99`; ctx.lineWidth=fs*.18; ctx.lineJoin='round';
   ctx.strokeText(expression,cx,cy+fs*.04);
   ctx.fillStyle=isHard?'rgba(210,210,255,0.95)':'rgba(255,255,255,0.95)';
   ctx.fillText(expression,cx,cy+fs*.04);
-  ctx.shadowColor='transparent'; ctx.shadowBlur=0; ctx.shadowOffsetX=0; ctx.shadowOffsetY=0;
   ctx.restore();
 };
+
+// ─── Slingshot gradient cache ────────────────────────────────────────────────
+let _slingshotCache: {ax:number;ay:number;poleG:CanvasGradient;lgG:CanvasGradient;rgG:CanvasGradient}|null = null;
 
 // ─── Slingshot drawing (개선된 디자인) ───────────────────────────────────────
 const drawSlingshot = (
@@ -139,52 +175,47 @@ const drawSlingshot = (
 ) => {
   const ax=anchor.x, ay=anchor.y;
 
-  // 나무 기둥 (그라데이션)
+  // 그라데이션 캐시 (anchor 위치가 바뀌지 않으면 재사용)
+  if(!_slingshotCache || _slingshotCache.ax!==ax || _slingshotCache.ay!==ay){
+    const poleG=ctx.createLinearGradient(ax-6,0,ax+6,0);
+    poleG.addColorStop(0,'#5d4037'); poleG.addColorStop(0.4,'#8d6e63'); poleG.addColorStop(1,'#4e342e');
+    const lgG=ctx.createLinearGradient(ax,ay+38,ax-42,ay);
+    lgG.addColorStop(0,'#6d4c41'); lgG.addColorStop(1,'#4e342e');
+    const rgG=ctx.createLinearGradient(ax,ay+38,ax+42,ay);
+    rgG.addColorStop(0,'#6d4c41'); rgG.addColorStop(1,'#4e342e');
+    _slingshotCache={ax,ay,poleG,lgG,rgG};
+  }
+  const {poleG,lgG,rgG}=_slingshotCache;
+
   ctx.save();
-  const poleGrad=ctx.createLinearGradient(ax-6,0,ax+6,0);
-  poleGrad.addColorStop(0,'#5d4037');
-  poleGrad.addColorStop(0.4,'#8d6e63');
-  poleGrad.addColorStop(1,'#4e342e');
-  ctx.strokeStyle=poleGrad; ctx.lineWidth=12; ctx.lineCap='round';
-  ctx.shadowColor='rgba(0,0,0,0.4)'; ctx.shadowBlur=6; ctx.shadowOffsetX=2; ctx.shadowOffsetY=0;
+  ctx.lineCap='round';
+  // 나무 기둥
+  ctx.strokeStyle=poleG; ctx.lineWidth=12;
   ctx.beginPath(); ctx.moveTo(ax,canvasH); ctx.lineTo(ax,ay+38); ctx.stroke();
-  ctx.shadowBlur=0; ctx.shadowOffsetX=0;
-
   // 왼쪽 가지
-  const lgGrad=ctx.createLinearGradient(ax,ay+38,ax-42,ay);
-  lgGrad.addColorStop(0,'#6d4c41'); lgGrad.addColorStop(1,'#4e342e');
-  ctx.strokeStyle=lgGrad; ctx.lineWidth=9;
+  ctx.strokeStyle=lgG; ctx.lineWidth=9;
   ctx.beginPath(); ctx.moveTo(ax,ay+38); ctx.lineTo(ax-42,ay); ctx.stroke();
-
   // 오른쪽 가지
-  const rgGrad=ctx.createLinearGradient(ax,ay+38,ax+42,ay);
-  rgGrad.addColorStop(0,'#6d4c41'); rgGrad.addColorStop(1,'#4e342e');
-  ctx.strokeStyle=rgGrad; ctx.lineWidth=9;
+  ctx.strokeStyle=rgG; ctx.lineWidth=9;
   ctx.beginPath(); ctx.moveTo(ax,ay+38); ctx.lineTo(ax+42,ay); ctx.stroke();
-
   // 가지 끝 나무 마디
   ctx.fillStyle='#5d4037';
-  [[ax-42,ay],[ax+42,ay]].forEach(([nx,ny])=>{
-    ctx.beginPath(); ctx.arc(nx,ny,5,0,Math.PI*2); ctx.fill();
-  });
+  ctx.beginPath(); ctx.arc(ax-42,ay,5,0,Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(ax+42,ay,5,0,Math.PI*2); ctx.fill();
   ctx.restore();
 
   if(!isFlying){
-    // 고무줄 (두께 있는 곡선)
     const band=isPinching?'#fdd835':'#bcaaa4';
     const bandW=isPinching?5:4;
     ctx.save();
-    ctx.shadowColor=isPinching?'rgba(253,216,53,0.5)':'rgba(0,0,0,0.3)';
-    ctx.shadowBlur=isPinching?8:3;
-    // 뒤 고무줄 (왼쪽 가지 → 구슬)
-    ctx.beginPath(); ctx.moveTo(ax-42,ay); ctx.lineTo(ball.x,ball.y);
-    ctx.strokeStyle=band; ctx.lineWidth=bandW; ctx.lineCap='round'; ctx.stroke();
-    // 앞 고무줄 (구슬 → 오른쪽 가지)
-    ctx.beginPath(); ctx.moveTo(ball.x,ball.y); ctx.lineTo(ax+42,ay);
-    ctx.strokeStyle=band; ctx.lineWidth=bandW; ctx.lineCap='round'; ctx.stroke();
-    ctx.shadowBlur=0; ctx.restore();
+    ctx.lineCap='round';
+    ctx.strokeStyle=band; ctx.lineWidth=bandW;
+    // 뒤 고무줄
+    ctx.beginPath(); ctx.moveTo(ax-42,ay); ctx.lineTo(ball.x,ball.y); ctx.stroke();
+    // 앞 고무줄
+    ctx.beginPath(); ctx.moveTo(ball.x,ball.y); ctx.lineTo(ax+42,ay); ctx.stroke();
+    ctx.restore();
 
-    // 구슬 홀더 (leather pouch 느낌)
     if(isPinching){
       ctx.save();
       ctx.fillStyle='rgba(101,67,33,0.6)';
@@ -599,7 +630,15 @@ const MathSlingshot: React.FC = () => {
     const video=videoRef.current,canvas=canvasRef.current,container=gameContainerRef.current;
     const ctx=canvas.getContext('2d',{willReadFrequently:false}); if(!ctx) return;
 
-    canvas.width=container.clientWidth; canvas.height=container.clientHeight;
+    // DPR을 1로 고정: 모바일에서 2x/3x dpr이 렌더링 부하를 2~3배 늘림
+    // canvas CSS 크기 = 논리 크기, 실제 픽셀은 1:1로 고정
+    const cw=container.clientWidth, ch=container.clientHeight;
+    canvas.width=cw; canvas.height=ch;
+    canvas.style.width=cw+'px'; canvas.style.height=ch+'px';
+    BUBBLE_RADIUS=calcRadius(canvas.width);
+    ROW_HEIGHT=BUBBLE_RADIUS*Math.sqrt(3);
+    marbleCache.clear();
+    _slingshotCache=null;
     anchorPos.current={x:canvas.width/2,y:canvas.height-SLINGSHOT_BOTTOM_OFFSET};
     ballPos.current={...anchorPos.current};
     initGrid(canvas.width);
@@ -655,13 +694,18 @@ const MathSlingshot: React.FC = () => {
       frameCountRef.current++;
 
       if(canvas.width!==container.clientWidth||canvas.height!==container.clientHeight){
-        canvas.width=container.clientWidth; canvas.height=container.clientHeight;
-        camCanvas.width=canvas.width; camCanvas.height=canvas.height;
-        anchorPos.current={x:canvas.width/2,y:canvas.height-SLINGSHOT_BOTTOM_OFFSET};
+        const cw=container.clientWidth, ch=container.clientHeight;
+        canvas.width=cw; canvas.height=ch;
+        canvas.style.width=cw+'px'; canvas.style.height=ch+'px';
+        camCanvas.width=cw; camCanvas.height=ch;
+        anchorPos.current={x:cw/2,y:ch-SLINGSHOT_BOTTOM_OFFSET};
         if(!isFlying.current&&!isPinching.current) ballPos.current={...anchorPos.current};
+        BUBBLE_RADIUS=calcRadius(cw);
+        ROW_HEIGHT=BUBBLE_RADIUS*Math.sqrt(3);
+        marbleCache.clear();
+        _slingshotCache=null;
       }
 
-      ctx.save();
       ctx.clearRect(0,0,canvas.width,canvas.height);
       if(camReady){
         ctx.drawImage(camCanvas,0,0,canvas.width,canvas.height);
@@ -693,9 +737,6 @@ const MathSlingshot: React.FC = () => {
         }
       }
 
-      // 매 프레임 화면 크기에 맞게 구슬 반지름 업데이트
-      BUBBLE_RADIUS=calcRadius(canvas.width);
-      ROW_HEIGHT=BUBBLE_RADIUS*Math.sqrt(3);
       const isPlaying=gamePhaseRef.current==='playing';
       const isHard=gameModeRef.current==='hard';
       const isEndless=gameModeTypeRef.current==='endless';
@@ -743,7 +784,7 @@ const MathSlingshot: React.FC = () => {
       // 당기기: 핀치 유지하며 이동
       // 발사: 손가락을 확실히 벌렸을 때만 (RELEASE_THRESHOLD)
       // 손이 사라지면: 그냥 리셋 (발사 안 함)
-      const RELEASE_THRESHOLD = PINCH_THRESHOLD * 1.25; // 0.125 - 확실히 벌린 상태
+      const RELEASE_THRESHOLD = PINCH_THRESHOLD * 1.12; // 0.1344 - 살짝 벌리면 발사
       if(!isLocked){
         if(!isFlying.current){
           const isPinched = pinchDist < PINCH_THRESHOLD;
@@ -791,6 +832,10 @@ const MathSlingshot: React.FC = () => {
         }
       }
 
+      // ── Draw bubbles ──
+      const doShake=shakeTimeRef.current>0;
+      const activeBubbles=bubbles.current; // active 아닌 건 checkMatches에서 즉시 제거됨
+
       // ── Physics ──
       if(isFlying.current){
         if(now-flightStart.current>5000){
@@ -807,9 +852,10 @@ const MathSlingshot: React.FC = () => {
               ballPos.current.x=Math.max(BUBBLE_RADIUS,Math.min(canvas.width-BUBBLE_RADIUS,ballPos.current.x));
             }
             if(ballPos.current.y<BUBBLE_RADIUS){hit=true;break;}
-            for(const b of bubbles.current){
-              if(!b.active) continue;
-              if(Math.pow(ballPos.current.x-b.x,2)+Math.pow(ballPos.current.y-b.y,2)<Math.pow(BUBBLE_RADIUS*1.9,2)){hit=true;break;}
+            const bpx=ballPos.current.x, bpy=ballPos.current.y;
+            const collR2=Math.pow(BUBBLE_RADIUS*1.9,2);
+            for(const b of activeBubbles){
+              if((bpx-b.x)*(bpx-b.x)+(bpy-b.y)*(bpy-b.y)<collR2){hit=true;break;}
             }
             if(hit) break;
           }
@@ -817,10 +863,6 @@ const MathSlingshot: React.FC = () => {
 
           if(hit){
             isFlying.current=false;
-            // 하드모드 판정: 발사 초기 velocity가 아래 방향이었는지
-            // ballVel이 y>0이면 아래로 발사 = 실제 아래로 날아가 착지
-            // 발사 시 저장한 velocity로 판단 (flightStart 시점 vel y)
-            // → 착지 시점의 ballVel.y가 양수(아래)이고, 착지 위치가 anchor보다 아래인 경우
             const landedBelow = ballPos.current.y > anchorPos.current.y + 20;
             if(landedBelow&&gameModeRef.current!=='hard'){
               const newCount=downLandCountRef.current+1;
@@ -831,28 +873,28 @@ const MathSlingshot: React.FC = () => {
               }
             }
 
-            // 착지 위치 찾기: 충돌 지점 가장 가까운 빈 그리드 칸
-            // 단, 너무 멀면 겹침 발생 → BUBBLE_RADIUS*3 이내만 허용
+            // 점유된 그리드 칸 Set으로 O(1) 조회
+            const occupiedSet=new Set(activeBubbles.map(b=>`${b.row}_${b.col}`));
             let bd=Infinity,br=0,bc=0,bx=0,by=0;
-            const MAX_LAND_DIST=calcRadius(canvas.width)*2.4;
-            // 1차: 가까운 거리 내 빈 칸
+            const MAX_LAND_DIST=BUBBLE_RADIUS*2.4;
             for(let r=0;r<GRID_ROWS+5;r++){
               const cols=r%2!==0?GRID_COLS-1:GRID_COLS;
               for(let c=0;c<cols;c++){
+                if(occupiedSet.has(`${r}_${c}`)) continue;
                 const p=getBubblePos(r,c,canvas.width);
-                if(bubbles.current.some(b=>b.active&&b.row===r&&b.col===c)) continue;
-                const d=Math.sqrt(Math.pow(ballPos.current.x-p.x,2)+Math.pow(ballPos.current.y-p.y,2));
+                const ddx=ballPos.current.x-p.x, ddy=ballPos.current.y-p.y;
+                const d=Math.sqrt(ddx*ddx+ddy*ddy);
                 if(d<bd&&d<MAX_LAND_DIST){bd=d;br=r;bc=c;bx=p.x;by=p.y;}
               }
             }
-            // 2차: 범위 내 없으면 가장 가까운 칸으로 폴백
             if(bd===Infinity){
               for(let r=0;r<GRID_ROWS+5;r++){
                 const cols=r%2!==0?GRID_COLS-1:GRID_COLS;
                 for(let c=0;c<cols;c++){
+                  if(occupiedSet.has(`${r}_${c}`)) continue;
                   const p=getBubblePos(r,c,canvas.width);
-                  if(bubbles.current.some(b=>b.active&&b.row===r&&b.col===c)) continue;
-                  const d=Math.sqrt(Math.pow(ballPos.current.x-p.x,2)+Math.pow(ballPos.current.y-p.y,2));
+                  const ddx=ballPos.current.x-p.x, ddy=ballPos.current.y-p.y;
+                  const d=Math.sqrt(ddx*ddx+ddy*ddy);
                   if(d<bd){bd=d;br=r;bc=c;bx=p.x;by=p.y;}
                 }
               }
@@ -860,13 +902,11 @@ const MathSlingshot: React.FC = () => {
 
             const cur=currentBubble();
             const col=(isHard?'purple':cur.color) as BubbleColor;
-            // 표현식은 발사 시 큐에서 가져온 것 고정
-            const fixedExpr=cur.expression;
             const nb:Bubble={id:`shot-${Date.now()}`,row:br,col:bc,x:bx,y:by,
-              color:col,answer:cur.answer,expression:fixedExpr,active:true};
+              color:col,answer:cur.answer,expression:cur.expression,active:true};
             bubbles.current.push(nb);
             checkMatches(nb);
-            dequeueAndRefill(); // 큐에서 소비 후 새 구슬 추가
+            dequeueAndRefill();
             ballPos.current={...anchorPos.current}; ballVel.current={x:0,y:0};
             checkGameOver(canvas.height);
             if(isEndless) checkEndlessRefill(canvas.width);
@@ -877,10 +917,7 @@ const MathSlingshot: React.FC = () => {
         }
       }
 
-      // ── Draw bubbles ──
-      const doShake=shakeTimeRef.current>0;
-      for(const b of bubbles.current){
-        if(!b.active) continue;
+      for(const b of activeBubbles){
         drawMarble(ctx,b.x,b.y,BUBBLE_RADIUS-1,b.color,b.expression,isHard,1.0,doShake?gsx:0,doShake?gsy:0);
       }
 
@@ -892,14 +929,15 @@ const MathSlingshot: React.FC = () => {
         drawMarble(ctx,fb.x,fb.y,BUBBLE_RADIUS-1,fb.color,fb.expression,isHard,fb.alpha);
       }
 
-      // ── Dust ──
-      if(frameCountRef.current%2===0){
+      // ── Dust (배치 렌더링: path 한 번에 묶기) ──
+      if(frameCountRef.current%2===0 && dustParticles.current.length>0){
+        ctx.beginPath();
         for(let i=dustParticles.current.length-1;i>=0;i--){
           const p=dustParticles.current[i]; p.x+=p.vx;p.y+=p.vy;p.life-=.025;
           if(p.life<=0){dustParticles.current.splice(i,1);continue;}
-          ctx.globalAlpha=p.life*.6;
-          ctx.beginPath();ctx.arc(p.x,p.y,2+p.life*2.5,0,Math.PI*2);ctx.fillStyle=p.color;ctx.fill();
+          ctx.moveTo(p.x,p.y); ctx.arc(p.x,p.y,2+p.life*2.5,0,Math.PI*2);
         }
+        ctx.globalAlpha=0.5; ctx.fillStyle='hsl(45,50%,65%)'; ctx.fill();
         ctx.globalAlpha=1.0;
       }
 
@@ -909,13 +947,9 @@ const MathSlingshot: React.FC = () => {
         const slY=canvas.height-SLINGSHOT_BOTTOM_OFFSET-BUBBLE_RADIUS*2;
         ctx.save();
         ctx.beginPath(); ctx.moveTo(0,slY);
-        for(let wx=0;wx<=canvas.width;wx+=6) ctx.lineTo(wx,slY+Math.sin(wx/28+waveOffsetRef.current)*3.5);
-        const lg=ctx.createLinearGradient(0,0,canvas.width,0);
-        lg.addColorStop(0,'rgba(60,140,255,0)'); lg.addColorStop(0.2,'rgba(80,160,255,0.5)');
-        lg.addColorStop(0.5,'rgba(100,180,255,0.65)'); lg.addColorStop(0.8,'rgba(80,160,255,0.5)');
-        lg.addColorStop(1,'rgba(60,140,255,0)');
-        ctx.strokeStyle=lg; ctx.lineWidth=2; ctx.shadowBlur=6; ctx.shadowColor='rgba(80,160,255,0.5)';
-        ctx.stroke(); ctx.shadowBlur=0; ctx.restore();
+        for(let wx=0;wx<=canvas.width;wx+=12) ctx.lineTo(wx,slY+Math.sin(wx/28+waveOffsetRef.current)*3.5);
+        ctx.strokeStyle='rgba(80,160,255,0.55)'; ctx.lineWidth=2;
+        ctx.stroke(); ctx.restore();
       }
 
       // ── Slingshot (개선된 디자인) ──
@@ -934,30 +968,27 @@ const MathSlingshot: React.FC = () => {
         const dx=anchorPos.current.x-ballPos.current.x,dy=anchorPos.current.y-ballPos.current.y;
         const len=Math.sqrt(dx*dx+dy*dy);
         if(len>10){
-          // 레이캐스트 함수: 시작점+방향 → {end, bounced, bouncePoint}
-          const raycast=(sx:number,sy:number,vx:number,vy:number,skipFirst=false):{ex:number,ey:number,hit:boolean,wallHit:boolean,wx:number,wy:number}=>{
-            const stepSize=6;
+          const collideR2=Math.pow(BUBBLE_RADIUS*1.85,2);
+          const raycast=(sx:number,sy:number,vx:number,vy:number,skipFirst=false):{ex:number,ey:number,hit:boolean,wallHit:boolean}=>{
+            const stepSize=14; // 6→14: 정밀도 약간 낮추고 속도 대폭 향상
             const maxDist=canvas.height*2;
             const steps=Math.ceil(maxDist/stepSize);
-            let ex=sx,ey=sy,wx=sx,wy=sy;
+            let ex=sx,ey=sy;
             for(let s=1;s<=steps;s++){
               const rx=sx+vx*stepSize*s, ry=sy+vy*stepSize*s;
-              if(ry<BUBBLE_RADIUS) return {ex:rx,ey:ry,hit:true,wallHit:false,wx,wy};
-              // 좌우 벽 반사
+              if(ry<BUBBLE_RADIUS) return {ex:rx,ey:ry,hit:true,wallHit:false};
               if(rx<BUBBLE_RADIUS||rx>canvas.width-BUBBLE_RADIUS){
-                return {ex:rx,ey:ry,hit:false,wallHit:true,wx:rx,wy:ry};
+                return {ex:rx,ey:ry,hit:false,wallHit:true};
               }
-              // 구슬 충돌
               if(!skipFirst||s>1){
-                for(const b of bubbles.current){
-                  if(!b.active) continue;
-                  if(Math.pow(rx-b.x,2)+Math.pow(ry-b.y,2)<Math.pow(BUBBLE_RADIUS*1.85,2))
-                    return {ex:rx,ey:ry,hit:true,wallHit:false,wx,wy};
+                for(const b of activeBubbles){ // filter 결과 재사용
+                  if((rx-b.x)*(rx-b.x)+(ry-b.y)*(ry-b.y)<collideR2)
+                    return {ex:rx,ey:ry,hit:true,wallHit:false};
                 }
               }
-              ex=rx; ey=ry; wx=rx; wy=ry;
+              ex=rx; ey=ry;
             }
-            return {ex,ey,hit:false,wallHit:false,wx,wy};
+            return {ex,ey,hit:false,wallHit:false};
           };
 
           const nx=dx/len, ny=dy/len;
@@ -967,25 +998,19 @@ const MathSlingshot: React.FC = () => {
           ctx.setLineDash([8,6]);
           ctx.lineDashOffset=-((now/10)%14);
           ctx.strokeStyle='rgba(255,255,255,0.45)'; ctx.lineWidth=1.5;
-          ctx.shadowBlur=4; ctx.shadowColor='rgba(255,255,255,0.25)';
 
-          // 첫 번째 선분
           ctx.beginPath();
           ctx.moveTo(ballPos.current.x,ballPos.current.y);
           ctx.lineTo(seg1.ex,seg1.ey);
           ctx.stroke();
 
-          // 벽에 튕긴 경우 두 번째 선분
           if(seg1.wallHit){
-            // 반사: x방향만 뒤집기
-            const rnx=-nx, rny=ny;
-            const seg2=raycast(seg1.ex,seg1.ey,rnx,rny,true);
+            const seg2=raycast(seg1.ex,seg1.ey,-nx,ny,true);
             ctx.globalAlpha=0.65;
             ctx.beginPath();
             ctx.moveTo(seg1.ex,seg1.ey);
             ctx.lineTo(seg2.ex,seg2.ey);
             ctx.stroke();
-            // 두 번째 착지점
             if(seg2.hit||!seg2.wallHit){
               ctx.setLineDash([]);
               ctx.globalAlpha=0.6;
@@ -993,7 +1018,6 @@ const MathSlingshot: React.FC = () => {
               ctx.fillStyle='rgba(255,200,100,0.7)'; ctx.fill();
             }
             ctx.globalAlpha=1.0;
-            // 벽 반사점 표시
             ctx.setLineDash([]);
             ctx.beginPath(); ctx.arc(seg1.ex,seg1.ey,4,0,Math.PI*2);
             ctx.fillStyle='rgba(255,255,255,0.4)'; ctx.fill();
@@ -1006,20 +1030,32 @@ const MathSlingshot: React.FC = () => {
         }
       }
 
-      // ── Particles ──
-      for(let i=particles.current.length-1;i>=0;i--){
-        const p=particles.current[i]; p.x+=p.vx;p.y+=p.vy;p.life-=.055;
-        if(p.life<=0){particles.current.splice(i,1);continue;}
-        ctx.globalAlpha=p.life; ctx.beginPath(); ctx.arc(p.x,p.y,4,0,Math.PI*2); ctx.fillStyle=p.color; ctx.fill();
+      // ── Particles (색상별 배치 렌더링) ──
+      if(particles.current.length>0){
+        // 색상별로 그룹핑
+        const colorGroups=new Map<string,{x:number,y:number,r:number,alpha:number}[]>();
+        for(let i=particles.current.length-1;i>=0;i--){
+          const p=particles.current[i]; p.x+=p.vx;p.y+=p.vy;p.life-=.055;
+          if(p.life<=0){particles.current.splice(i,1);continue;}
+          if(!colorGroups.has(p.color)) colorGroups.set(p.color,[]);
+          colorGroups.get(p.color)!.push({x:p.x,y:p.y,r:4,alpha:p.life});
+        }
+        for(const [color,pts] of colorGroups){
+          // 같은 알파끼리 완전 배치는 불가하지만, beginPath는 한 번만
+          ctx.fillStyle=color;
+          for(const pt of pts){
+            ctx.globalAlpha=pt.alpha;
+            ctx.beginPath(); ctx.arc(pt.x,pt.y,pt.r,0,Math.PI*2); ctx.fill();
+          }
+        }
+        ctx.globalAlpha=1.0;
       }
-      ctx.globalAlpha=1.0;
 
       // ── Opponent ──
       if(oppBubblesRef.current.length>0&&multiStatusRef.current==='playing'){
         drawOpponentBoard(ctx,oppBubblesRef.current,canvas.width-148,8,140,190);
       }
 
-      ctx.restore();
     }; // end gameLoop
 
     // rAF 시작
