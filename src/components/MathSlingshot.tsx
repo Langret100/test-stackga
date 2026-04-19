@@ -669,8 +669,8 @@ const MathSlingshot: React.FC = () => {
         const hy=(idx.y+thumb.y)*canvas.height/2;
         const ddx=idx.x-thumb.x,ddy=idx.y-thumb.y;
         const rawPinch=Math.sqrt(ddx*ddx+ddy*ddy);
-        // EMA 스무딩: α=0.25 (낮을수록 더 부드럽지만 지연 증가)
-        const ALPHA=0.25;
+        // EMA 스무딩: α=0.6 (빠른 반응)
+        const ALPHA=0.6;
         if(smoothHandPos.current){
           smoothHandPos.current={
             x:smoothHandPos.current.x*(1-ALPHA)+hx*ALPHA,
@@ -679,7 +679,8 @@ const MathSlingshot: React.FC = () => {
         } else { smoothHandPos.current={x:hx,y:hy}; }
         smoothPinchDist.current=smoothPinchDist.current*(1-ALPHA)+rawPinch*ALPHA;
         latestHandPos.current=smoothHandPos.current;
-        latestPinchDist.current=smoothPinchDist.current;
+        // 발사 감지는 raw값 사용 (스무딩 지연 없이 즉각 반응)
+        latestPinchDist.current=rawPinch;
         latestLandmarks.current=lm;
       } else {
         latestHandPos.current=null;
