@@ -377,10 +377,9 @@ const MathSlingshot: React.FC = () => {
   };
 
   const isNeighbor=(a:Bubble,b:Bubble)=>{
-    const dr=b.row-a.row,dc=b.col-a.col;
-    if(Math.abs(dr)>1) return false;
-    if(dr===0) return Math.abs(dc)===1;
-    return a.row%2!==0?(dc===0||dc===1):(dc===-1||dc===0);
+    // pixel 거리 기반: 구슬 지름 2.3배 이내면 이웃으로 판정 (row/col 오프셋 오류 방지)
+    const dx=a.x-b.x, dy=a.y-b.y;
+    return Math.sqrt(dx*dx+dy*dy) < BUBBLE_RADIUS*2.3;
   };
 
   const dropFloatingBubbles=useCallback(()=>{
@@ -490,9 +489,9 @@ const MathSlingshot: React.FC = () => {
         bubbles.current=bubbles.current.filter(b=>b.active);
         scoreRef.current+=Math.floor(pts*mult); setScore(scoreRef.current);
         // Combo! 배너
-        setComboText('Combo! 🌟');
+        setComboText('PERFECT! 🌟');
         setShowCombo(true);
-        setTimeout(()=>setShowCombo(false),1500);
+        setTimeout(()=>setShowCombo(false),2000);
       } else {
         // 일반 색 매칭
         let pts=0;
@@ -804,9 +803,11 @@ const MathSlingshot: React.FC = () => {
               const BALL_ALPHA=0.3;
               const tnx=ballPos.current.x*(1-BALL_ALPHA)+handPos.x*BALL_ALPHA;
               const tny=ballPos.current.y*(1-BALL_ALPHA)+handPos.y*BALL_ALPHA;
-              // 데드존 6px: 정지 시 완전 고정
+              // 데드존: 당기는 중 1px(각도 부드럽게), 정지 시 6px(떨림 제거)
+              const movingFast=Math.sqrt(Math.pow(handPos.x-ballPos.current.x,2)+Math.pow(handPos.y-ballPos.current.y,2))>8;
+              const deadzone=movingFast?1:6;
               const bd=Math.sqrt(Math.pow(tnx-ballPos.current.x,2)+Math.pow(tny-ballPos.current.y,2));
-              if(bd>6) ballPos.current={x:tnx,y:tny};
+              if(bd>deadzone) ballPos.current={x:tnx,y:tny};
               const ddx=ballPos.current.x-anchorPos.current.x,ddy=ballPos.current.y-anchorPos.current.y;
               const dd=Math.sqrt(ddx*ddx+ddy*ddy);
               if(dd>MAX_DRAG_DIST){
@@ -1227,13 +1228,14 @@ const MathSlingshot: React.FC = () => {
       {/* Combo 배너 */}
       {showCombo&&(
         <div className="absolute inset-0 flex items-center justify-center z-50 pointer-events-none">
-          <div key={comboText} className="px-10 py-5 rounded-3xl text-center"
+          <div key={comboText} className="px-12 py-6 rounded-3xl text-center"
             style={{
-              background:'linear-gradient(135deg,rgba(255,180,0,0.92),rgba(255,100,0,0.92))',
-              boxShadow:'0 0 60px rgba(255,160,0,0.7)',
-              animation:'comboPop 1.5s ease-out forwards',
+              background:'linear-gradient(135deg,rgba(80,200,255,0.95),rgba(180,0,255,0.95))',
+              boxShadow:'0 0 80px rgba(120,80,255,0.9), 0 0 30px rgba(255,255,255,0.4)',
+              animation:'comboPop 2s ease-out forwards',
+              border:'2px solid rgba(255,255,255,0.5)',
             }}>
-            <p className="text-4xl font-black text-white" style={{textShadow:'0 0 20px rgba(255,255,255,0.8)'}}>{comboText}</p>
+            <p className="text-5xl font-black text-white" style={{textShadow:'0 0 30px rgba(255,255,255,1), 0 0 60px rgba(150,100,255,0.8)'}}>{comboText}</p>
           </div>
         </div>
       )}
