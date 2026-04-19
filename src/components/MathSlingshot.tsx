@@ -800,8 +800,13 @@ const MathSlingshot: React.FC = () => {
               isPinching.current=true;
             }
             if(isPinching.current){
-              // 당기는 중: 구슬 위치 = 손 위치
-              ballPos.current={x:handPos.x,y:handPos.y};
+              // 당기는 중: 구슬 위치를 손 위치로 EMA 스무딩 (떨림 억제)
+              const BALL_ALPHA=0.3;
+              const tnx=ballPos.current.x*(1-BALL_ALPHA)+handPos.x*BALL_ALPHA;
+              const tny=ballPos.current.y*(1-BALL_ALPHA)+handPos.y*BALL_ALPHA;
+              // 데드존 6px: 정지 시 완전 고정
+              const bd=Math.sqrt(Math.pow(tnx-ballPos.current.x,2)+Math.pow(tny-ballPos.current.y,2));
+              if(bd>6) ballPos.current={x:tnx,y:tny};
               const ddx=ballPos.current.x-anchorPos.current.x,ddy=ballPos.current.y-anchorPos.current.y;
               const dd=Math.sqrt(ddx*ddx+ddy*ddy);
               if(dd>MAX_DRAG_DIST){
