@@ -669,17 +669,19 @@ const MathSlingshot: React.FC = () => {
         const hy=(idx.y+thumb.y)*canvas.height/2;
         const ddx=idx.x-thumb.x,ddy=idx.y-thumb.y;
         const rawPinch=Math.sqrt(ddx*ddx+ddy*ddy);
-        // EMA 스무딩: α=0.6 (빠른 반응)
-        const ALPHA=0.6;
+        // 손 위치: 느린 EMA로 떨림 억제 (α=0.18)
+        const ALPHA_POS=0.18;
         if(smoothHandPos.current){
-          smoothHandPos.current={
-            x:smoothHandPos.current.x*(1-ALPHA)+hx*ALPHA,
-            y:smoothHandPos.current.y*(1-ALPHA)+hy*ALPHA,
-          };
+          const nx=smoothHandPos.current.x*(1-ALPHA_POS)+hx*ALPHA_POS;
+          const ny=smoothHandPos.current.y*(1-ALPHA_POS)+hy*ALPHA_POS;
+          // 데드존: 2px 이하 움직임은 무시 (정지 시 떨림 제거)
+          const moveDist=Math.sqrt(Math.pow(nx-smoothHandPos.current.x,2)+Math.pow(ny-smoothHandPos.current.y,2));
+          if(moveDist>2){
+            smoothHandPos.current={x:nx,y:ny};
+          }
         } else { smoothHandPos.current={x:hx,y:hy}; }
-        smoothPinchDist.current=smoothPinchDist.current*(1-ALPHA)+rawPinch*ALPHA;
-        latestHandPos.current=smoothHandPos.current;
         // 발사 감지는 raw값 사용 (스무딩 지연 없이 즉각 반응)
+        latestHandPos.current=smoothHandPos.current;
         latestPinchDist.current=rawPinch;
         latestLandmarks.current=lm;
       } else {
