@@ -784,11 +784,11 @@ const MathSlingshot: React.FC = () => {
       // 당기기: 핀치 유지하며 이동
       // 발사: 손가락을 확실히 벌렸을 때만 (RELEASE_THRESHOLD)
       // 손이 사라지면: 그냥 리셋 (발사 안 함)
-      const RELEASE_THRESHOLD = PINCH_THRESHOLD * 1.12; // 0.1344 - 살짝 벌리면 발사
+      const RELEASE_THRESHOLD = PINCH_THRESHOLD * 1.02; // 핀치에서 살짝만 벌려도 즉시 발사
       if(!isLocked){
         if(!isFlying.current){
           const isPinched = pinchDist < PINCH_THRESHOLD;
-          const isReleased = pinchDist > RELEASE_THRESHOLD; // 확실히 벌린 상태
+          const isReleased = !isPinched; // 핀치 상태만 아니면 바로 발사
 
           if(isPinched && handPos){
             // 핀치 상태 + 구슬 근처 → 잡기 시작
@@ -823,7 +823,7 @@ const MathSlingshot: React.FC = () => {
                 ballVel.current={x:dx*vm,y:dy*vm};
               } else ballPos.current={...anchorPos.current};
             }
-            // 중간 상태 (PINCH_THRESHOLD ~ RELEASE_THRESHOLD): 아직 발사 안 함, 당기기 유지
+            // 핀치 해제 → 즉시 발사 (isReleased = !isPinched)
           }
         }
         if(!isFlying.current&&!isPinching.current){
