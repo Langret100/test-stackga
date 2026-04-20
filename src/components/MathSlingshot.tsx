@@ -14,12 +14,13 @@ import {
 // ─── Constants ────────────────────────────────────────────────────────────────
 const PINCH_THRESHOLD         = 0.12;
 const BUBBLE_RADIUS_MAX       = 29;
-const BUBBLE_RADIUS_MIN       = 18;
+const BUBBLE_RADIUS_MIN       = 22; // 모바일 구슬 크기 키움 (기존 18)
 const GRID_COLS               = 11;
 const MAX_BUBBLES_PER_ROW     = 6;
 const INIT_ROWS               = 2;
 const GRID_ROWS               = 8;
 const SLINGSHOT_BOTTOM_OFFSET = 260; // 큐UI(90) + 구슬2개(~120) + 여유(50)
+const GRID_TOP_PADDING        = 100; // 상단 HUD 아래 여백
 
 // 화면 너비에 맞는 구슬 반지름 계산 (모바일 대응)
 const calcRadius = (width: number): number => {
@@ -467,7 +468,7 @@ const MathSlingshot: React.FC = () => {
     const xOffset=(width-GRID_COLS*r*2)/2+r;
     return {
       x: xOffset+col*(r*2)+(row%2!==0?r:0),
-      y: r+row*rh,
+      y: GRID_TOP_PADDING + r + row*rh,
     };
   };
 
@@ -528,7 +529,7 @@ const MathSlingshot: React.FC = () => {
     for(let i=0;i<20;i++){
       const px=minX+Math.random()*(maxX-minX);
       dustParticles.current.push({
-        x:px, y:BUBBLE_RADIUS*2+Math.random()*8,
+        x:px, y:GRID_TOP_PADDING+BUBBLE_RADIUS*2+Math.random()*8,
         vx:(Math.random()-.5)*2.5, vy:Math.random()*1.2+0.2,
         life:.6+Math.random()*.4, color:`hsl(${40+Math.random()*20},50%,65%)`,
       });
@@ -973,7 +974,7 @@ const MathSlingshot: React.FC = () => {
               ballVel.current.x*=-1;
               ballPos.current.x=Math.max(BUBBLE_RADIUS,Math.min(canvas.width-BUBBLE_RADIUS,ballPos.current.x));
             }
-            if(ballPos.current.y<BUBBLE_RADIUS){hit=true;break;}
+            if(ballPos.current.y<GRID_TOP_PADDING+BUBBLE_RADIUS){hit=true;break;}
             const bpx=ballPos.current.x, bpy=ballPos.current.y;
             const collR2=Math.pow(BUBBLE_RADIUS*1.9,2);
             for(const b of activeBubbles){
@@ -1018,7 +1019,7 @@ const MathSlingshot: React.FC = () => {
               }
             }
             // 천장 row(0)도 후보에 추가 (첫 줄 착지용)
-            if(activeBubbles.length===0||ballPos.current.y<BUBBLE_RADIUS*4){
+            if(activeBubbles.length===0||ballPos.current.y<GRID_TOP_PADDING+BUBBLE_RADIUS*4){
               const cols0=GRID_COLS;
               for(let c=0;c<cols0;c++){
                 const key=`0_${c}`;
@@ -1125,7 +1126,7 @@ const MathSlingshot: React.FC = () => {
             let ex=sx,ey=sy;
             for(let s=1;s<=steps;s++){
               const rx=sx+vx*stepSize*s, ry=sy+vy*stepSize*s;
-              if(ry<BUBBLE_RADIUS) return {ex:rx,ey:ry,hit:true,wallHit:false};
+              if(ry<GRID_TOP_PADDING+BUBBLE_RADIUS) return {ex:rx,ey:ry,hit:true,wallHit:false};
               if(rx<BUBBLE_RADIUS||rx>canvas.width-BUBBLE_RADIUS){
                 return {ex:rx,ey:ry,hit:false,wallHit:true};
               }
