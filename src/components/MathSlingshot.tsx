@@ -260,6 +260,7 @@ const MathSlingshot: React.FC = () => {
   const videoRef         = useRef<HTMLVideoElement>(null);
   const canvasRef        = useRef<HTMLCanvasElement>(null);
   const gameContainerRef = useRef<HTMLDivElement>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
 
   const ballPos     = useRef<Point>({x:0,y:0});
   const ballVel     = useRef<Point>({x:0,y:0});
@@ -736,8 +737,8 @@ const MathSlingshot: React.FC = () => {
   // MAIN GAME LOOP
   // ─────────────────────────────────────────────────────────────────────────
   useEffect(()=>{
-    if(!videoRef.current||!canvasRef.current||!gameContainerRef.current) return;
-    const video=videoRef.current,canvas=canvasRef.current,container=gameContainerRef.current;
+    if(!videoRef.current||!canvasRef.current||!(wrapperRef.current||gameContainerRef.current)) return;
+    const video=videoRef.current,canvas=canvasRef.current,container=(wrapperRef.current||gameContainerRef.current)!;
     const ctx=canvas.getContext('2d',{willReadFrequently:false}); if(!ctx) return;
 
     // DPR을 1로 고정: 모바일에서 2x/3x dpr이 렌더링 부하를 2~3배 늘림
@@ -1257,8 +1258,8 @@ const MathSlingshot: React.FC = () => {
   // RENDER
   // ─────────────────────────────────────────────────────────────────────────
   return (
-    <div className="w-full h-screen bg-[#121212] overflow-hidden text-[#e3e3e3] relative select-none"
-      style={{fontFamily:'system-ui,sans-serif',touchAction:'none'}}>
+    <div ref={wrapperRef} className="w-full bg-[#121212] overflow-hidden text-[#e3e3e3] relative select-none"
+      style={{fontFamily:'system-ui,sans-serif',touchAction:'none',height:'100dvh'}}>
 
       <video ref={videoRef} className="absolute hidden" playsInline/>
       <canvas ref={canvasRef} className="absolute inset-0 w-full h-full"/>
