@@ -994,22 +994,49 @@ const MathSlingshot: React.FC = () => {
               }
             }
 
-            // 점유된 그리드 칸 Set으로 O(1) 조회
+            // ── 착지 위치 결정: 기존 구슬에 인접한 빈 칸 중 가장 가까운 곳 ──
             const occupiedSet=new Set(activeBubbles.map(b=>`${b.row}_${b.col}`));
+            const SNAP_DIST=BUBBLE_RADIUS*2.15; // 구슬 지름 + 여유
             let bd=Infinity,br=0,bc=0,bx=0,by=0;
-            const MAX_LAND_DIST=BUBBLE_RADIUS*2.4;
-            for(let r=0;r<GRID_ROWS+5;r++){
-              const cols=r%2!==0?GRID_COLS-1:GRID_COLS;
-              for(let c=0;c<cols;c++){
-                if(occupiedSet.has(`${r}_${c}`)) continue;
-                const p=getBubblePos(r,c,canvas.width);
-                const ddx=ballPos.current.x-p.x, ddy=ballPos.current.y-p.y;
-                const d=Math.sqrt(ddx*ddx+ddy*ddy);
-                if(d<bd&&d<MAX_LAND_DIST){bd=d;br=r;bc=c;bx=p.x;by=p.y;}
+
+            // 후보: 기존 구슬들의 인접 칸 중 비어있는 칸만
+            const candidateKeys=new Set<string>();
+            for(const b of activeBubbles){
+              // 6방향 이웃 칸 계산
+              const neighbors=[
+                {r:b.row,  c:b.col-1},{r:b.row,  c:b.col+1},
+                {r:b.row-1,c:b.col+(b.row%2!==0?0:-1)},{r:b.row-1,c:b.col+(b.row%2!==0?1:0)},
+                {r:b.row+1,c:b.col+(b.row%2!==0?0:-1)},{r:b.row+1,c:b.col+(b.row%2!==0?1:0)},
+              ];
+              for(const n of neighbors){
+                if(n.r<0||n.c<0) continue;
+                const maxC=n.r%2!==0?GRID_COLS-1:GRID_COLS;
+                if(n.c>=maxC) continue;
+                const key=`${n.r}_${n.c}`;
+                if(!occupiedSet.has(key)) candidateKeys.add(key);
               }
             }
+            // 천장 row(0)도 후보에 추가 (첫 줄 착지용)
+            if(activeBubbles.length===0||ballPos.current.y<BUBBLE_RADIUS*4){
+              const cols0=GRID_COLS;
+              for(let c=0;c<cols0;c++){
+                const key=`0_${c}`;
+                if(!occupiedSet.has(key)) candidateKeys.add(key);
+              }
+            }
+
+            for(const key of candidateKeys){
+              const [rs,cs]=key.split('_');
+              const r=parseInt(rs),c=parseInt(cs);
+              const p=getBubblePos(r,c,canvas.width);
+              const ddx=ballPos.current.x-p.x, ddy=ballPos.current.y-p.y;
+              const d=Math.sqrt(ddx*ddx+ddy*ddy);
+              if(d<bd&&d<SNAP_DIST){bd=d;br=r;bc=c;bx=p.x;by=p.y;}
+            }
+
+            // 후보가 없으면(그리드 벗어난 경우) 가장 가까운 빈 칸으로 fallback
             if(bd===Infinity){
-              for(let r=0;r<GRID_ROWS+5;r++){
+              for(let r=0;r<GRID_ROWS+8;r++){
                 const cols=r%2!==0?GRID_COLS-1:GRID_COLS;
                 for(let c=0;c<cols;c++){
                   if(occupiedSet.has(`${r}_${c}`)) continue;
