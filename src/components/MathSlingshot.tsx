@@ -4,7 +4,7 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Point, Bubble, Particle, BubbleColor, GameMode } from '../types';
-import { Loader2, Trophy, Zap, RefreshCw, X, Users, Infinity as InfinityIcon } from 'lucide-react';
+import { Loader2, Trophy, Zap, RefreshCw, X, Users, Infinity as InfinityIcon, Volume2, VolumeX, Maximize, Minimize, LogOut } from 'lucide-react';
 import {
   initFirebase, joinLobby, watchRoom, setRoomState,
   publishMyState, subscribeOppState, removePlayer,
@@ -298,6 +298,85 @@ const MathSlingshot: React.FC = () => {
   const smoothHandPos       = useRef<Point|null>(null);
   const smoothPinchDist     = useRef<number>(1.0);
 
+  // ── Audio ──
+  const bgmRef          = useRef<HTMLAudioElement|null>(null);
+  const [isMuted,       setIsMuted]       = useState(false);
+  const [isFullscreen,  setIsFullscreen]  = useState(false);
+  const isMutedRef      = useRef(false);
+
+  // Web Audio Context for SFX
+  const audioCtxRef     = useRef<AudioContext|null>(null);
+  const getAudioCtx = ()=>{
+    if(!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext||(window as any).webkitAudioContext)();
+    return audioCtxRef.current;
+  };
+
+  // ── SFX helpers ──
+  const playSfxShoot = ()=>{
+    try {
+      const ctx = getAudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(520, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(180, ctx.currentTime + 0.18);
+      gain.gain.setValueAtTime(0.22, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.18);
+      osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.18);
+    } catch(e){}
+  };
+
+  const playSfxPop = (big=false)=>{
+    try {
+      const ctx = getAudioCtx();
+      // 노이즈 버스트 (폭발음)
+      const bufSize = ctx.sampleRate * 0.12;
+      const buf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
+      const data = buf.getChannelData(0);
+      for(let i=0;i<bufSize;i++) data[i]=(Math.random()*2-1);
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.value = big ? 280 : 420;
+      filter.Q.value = 0.8;
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(big ? 0.55 : 0.35, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + (big ? 0.22 : 0.14));
+      src.connect(filter); filter.connect(gain); gain.connect(ctx.destination);
+      src.start(ctx.currentTime);
+      // 톤 레이어
+      const osc = ctx.createOscillator();
+      const g2 = ctx.createGain();
+      osc.connect(g2); g2.connect(ctx.destination);
+      osc.frequency.setValueAtTime(big ? 160 : 240, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(60, ctx.currentTime + 0.2);
+      g2.gain.setValueAtTime(big ? 0.3 : 0.18, ctx.currentTime);
+      g2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2);
+      osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.2);
+    } catch(e){}
+  };
+
+  const playSfxPerfect = ()=>{
+    try {
+      const ctx = getAudioCtx();
+      // 상승 아르페지오
+      [0, 0.07, 0.14, 0.21].forEach((t, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.type = 'triangle';
+        const freqs = [523, 659, 784, 1047];
+        osc.frequency.value = freqs[i];
+        gain.gain.setValueAtTime(0.28, ctx.currentTime + t);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + t + 0.25);
+        osc.start(ctx.currentTime + t);
+        osc.stop(ctx.currentTime + t + 0.25);
+      });
+    } catch(e){}
+  };
+
   const fbRef           = useRef<FirebaseServices|null>(null);
   const joinResultRef   = useRef<JoinResult|null>(null);
   const multiStatusRef  = useRef<MultiStatus>('idle');
@@ -327,6 +406,40 @@ const MathSlingshot: React.FC = () => {
   useEffect(()=>{ gamePhaseRef.current=gamePhase; },[gamePhase]);
   useEffect(()=>{ multiStatusRef.current=multiStatus; },[multiStatus]);
   useEffect(()=>{ gameModeTypeRef.current=gameModeType; },[gameModeType]);
+
+  // ── BGM 초기화 ──
+  useEffect(()=>{
+    const audio = new Audio('./game_music.mp3');
+    audio.loop = true;
+    audio.volume = 0.45;
+    bgmRef.current = audio;
+    // 첫 사용자 인터랙션 후 재생
+    const tryPlay = ()=>{ if(!isMutedRef.current) audio.play().catch(()=>{}); };
+    document.addEventListener('click', tryPlay, {once:true});
+    document.addEventListener('touchstart', tryPlay, {once:true});
+    // fullscreen 변화 감지
+    const onFsChange = ()=> setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', onFsChange);
+    return ()=>{
+      audio.pause(); audio.src='';
+      document.removeEventListener('fullscreenchange', onFsChange);
+    };
+  },[]);
+
+  const toggleMute = ()=>{
+    const next = !isMutedRef.current;
+    isMutedRef.current = next;
+    setIsMuted(next);
+    if(bgmRef.current){ if(next) bgmRef.current.pause(); else bgmRef.current.play().catch(()=>{}); }
+  };
+
+  const toggleFullscreen = ()=>{
+    if(!document.fullscreenElement){
+      document.documentElement.requestFullscreen().catch(()=>{});
+    } else {
+      document.exitFullscreen().catch(()=>{});
+    }
+  };
 
   // ── 큐 초기화 ─────────────────────────────────────────────────────────────
   const initQueue = useCallback(()=>{
@@ -430,20 +543,49 @@ const MathSlingshot: React.FC = () => {
 
   const checkMatches=useCallback((start:Bubble)=>{
     const mult=gameModeRef.current==='hard'?1.5:1.0;
-    let didExplode=false;
 
-    // ── 규칙A: 같은 정답 → 닿은 구슬 2개면 즉시 터짐 (색 무관) ──
-    // start와 인접한 구슬 중 같은 정답인 것 모두 수집 (BFS)
-    const sameAns=new Set<string>([start.id]);
-    const qa=[start]; let qi=0;
-    while(qi<qa.length){
-      const cur=qa[qi++];
-      bubbles.current.filter(b=>b.active&&!sameAns.has(b.id)&&isNeighbor(cur,b)&&b.answer===start.answer)
-        .forEach(b=>{sameAns.add(b.id);qa.push(b);});
+    // ── 같은 색 그룹 수집 (BFS) ──
+    const sameCol=new Set<string>([start.id]);
+    const qc=[start]; let qi=0;
+    while(qi<qc.length){
+      const cur=qc[qi++];
+      bubbles.current.filter(b=>b.active&&!sameCol.has(b.id)&&isNeighbor(cur,b)&&b.color===start.color)
+        .forEach(b=>{sameCol.add(b.id);qc.push(b);});
     }
-    if(sameAns.size>=2){
+
+    // ── 같은 색 그룹 내에 같은 정답 있는지 확인 → PERFECT 조건 ──
+    const hasSameAnsInGroup=Array.from(sameCol).some(id=>{
+      const b=bubbles.current.find(x=>x.id===id);
+      return b && b.id!==start.id && b.answer===start.answer;
+    });
+
+    if(sameCol.size>=3 && hasSameAnsInGroup){
+      // ── PERFECT: 같은 색 3개 이상 + 그 안에 같은 정답 → 그룹 + 주변 1칸 폭발 ──
+      const toExp=new Set<string>(sameCol);
+      sameCol.forEach(id=>{
+        const b=bubbles.current.find(x=>x.id===id); if(!b) return;
+        bubbles.current.filter(nb=>nb.active&&!toExp.has(nb.id)&&isNeighbor(b,nb))
+          .forEach(nb=>toExp.add(nb.id));
+      });
       let pts=0;
-      sameAns.forEach(id=>{
+      toExp.forEach(id=>{
+        const b=bubbles.current.find(x=>x.id===id); if(!b||!b.active) return;
+        b.active=false; createExplosion(b.x,b.y,COLOR_CONFIG[b.color].hex,true);
+        pts+=COLOR_CONFIG[b.color].points*2;
+      });
+      bubbles.current=bubbles.current.filter(b=>b.active);
+      scoreRef.current+=Math.floor(pts*mult); setScore(scoreRef.current);
+      playSfxPerfect();
+      setComboText('PERFECT! 🌟');
+      setShowCombo(true);
+      setTimeout(()=>setShowCombo(false),2000);
+      dropFloatingBubbles();
+
+    } else if(sameCol.size>=3){
+      // ── 규칙B: 같은 색 3개 이상 (정답 무관) ──
+      playSfxPop(false);
+      let pts=0;
+      sameCol.forEach(id=>{
         const b=bubbles.current.find(x=>x.id===id); if(!b||!b.active) return;
         b.active=false; createExplosion(b.x,b.y,COLOR_CONFIG[b.color].hex);
         pts+=COLOR_CONFIG[b.color].points;
@@ -451,59 +593,28 @@ const MathSlingshot: React.FC = () => {
       bubbles.current=bubbles.current.filter(b=>b.active);
       scoreRef.current+=Math.floor(pts*mult); setScore(scoreRef.current);
       dropFloatingBubbles();
-      didExplode=true;
-    }
 
-    if(didExplode) return;
-
-    // ── 규칙B: 같은 색 3개 이상 연결 (정답 무관) ──
-    const sameCol=new Set<string>([start.id]);
-    const qc=[start]; qi=0;
-    while(qi<qc.length){
-      const cur=qc[qi++];
-      bubbles.current.filter(b=>b.active&&!sameCol.has(b.id)&&isNeighbor(cur,b)&&b.color===start.color)
-        .forEach(b=>{sameCol.add(b.id);qc.push(b);});
-    }
-    if(sameCol.size>=3){
-      // ── 콤보 체크: 같은색 그룹 중 start와 색+정답 모두 같은 구슬이 있으면 Combo! ──
-      const comboMatch=Array.from(sameCol).filter(id=>{
-        const b=bubbles.current.find(x=>x.id===id);
-        return b && b.id!==start.id && b.color===start.color && b.answer===start.answer;
-      });
-      const isCombo=comboMatch.length>0;
-
-      if(isCombo){
-        // 콤보: 그룹 + 주변 1칸 전부 폭발
-        const toExp=new Set<string>(sameCol);
-        sameCol.forEach(id=>{
-          const b=bubbles.current.find(x=>x.id===id); if(!b) return;
-          bubbles.current.filter(nb=>nb.active&&!toExp.has(nb.id)&&isNeighbor(b,nb))
-            .forEach(nb=>toExp.add(nb.id));
-        });
+    } else {
+      // ── 규칙A: 같은 정답 2개 이상 연결 (색 무관, 색 그룹 조건 미달 시) ──
+      const sameAns=new Set<string>([start.id]);
+      const qa=[start]; qi=0;
+      while(qi<qa.length){
+        const cur=qa[qi++];
+        bubbles.current.filter(b=>b.active&&!sameAns.has(b.id)&&isNeighbor(cur,b)&&b.answer===start.answer)
+          .forEach(b=>{sameAns.add(b.id);qa.push(b);});
+      }
+      if(sameAns.size>=2){
+        playSfxPop(false);
         let pts=0;
-        toExp.forEach(id=>{
-          const b=bubbles.current.find(x=>x.id===id); if(!b||!b.active) return;
-          b.active=false; createExplosion(b.x,b.y,COLOR_CONFIG[b.color].hex,true);
-          pts+=COLOR_CONFIG[b.color].points*2;
-        });
-        bubbles.current=bubbles.current.filter(b=>b.active);
-        scoreRef.current+=Math.floor(pts*mult); setScore(scoreRef.current);
-        // Combo! 배너
-        setComboText('PERFECT! 🌟');
-        setShowCombo(true);
-        setTimeout(()=>setShowCombo(false),2000);
-      } else {
-        // 일반 색 매칭
-        let pts=0;
-        sameCol.forEach(id=>{
+        sameAns.forEach(id=>{
           const b=bubbles.current.find(x=>x.id===id); if(!b||!b.active) return;
           b.active=false; createExplosion(b.x,b.y,COLOR_CONFIG[b.color].hex);
           pts+=COLOR_CONFIG[b.color].points;
         });
         bubbles.current=bubbles.current.filter(b=>b.active);
         scoreRef.current+=Math.floor(pts*mult); setScore(scoreRef.current);
+        dropFloatingBubbles();
       }
-      dropFloatingBubbles();
     }
   },[dropFloatingBubbles]);
 
@@ -827,6 +938,7 @@ const MathSlingshot: React.FC = () => {
               const sd=Math.sqrt(dx*dx+dy*dy);
               if(sd>30){
                 isFlying.current=true; flightStart.current=now;
+                playSfxShoot();
                 const pr=Math.min(sd/MAX_DRAG_DIST,1.0);
                 const vm=MIN_FORCE_MULT+(MAX_FORCE_MULT-MIN_FORCE_MULT)*(pr*pr);
                 ballVel.current={x:dx*vm,y:dy*vm};
@@ -1285,11 +1397,11 @@ const MathSlingshot: React.FC = () => {
         )}
       </div>
 
-      {/* HUD - Multi + X */}
+      {/* HUD - 우측 상단 버튼들 */}
       <div className="absolute top-3 right-3 z-40 flex items-center gap-1.5">
+        {/* 멀티플레이어 버튼 */}
         <button onClick={()=>{
             if(multiStatus==='idle'){
-              // 무제한 모드면 일반 모드로 전환 후 매칭
               if(gameModeTypeRef.current==='endless'){
                 setGameModeType('normal'); gameModeTypeRef.current='normal';
               }
@@ -1308,10 +1420,30 @@ const MathSlingshot: React.FC = () => {
             ?<><div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse"/><span>연결됨</span></>
             :<><Users className="w-3 h-3"/><span>멀티</span></>}
         </button>
+        {/* 음소거 버튼 */}
+        <button onClick={toggleMute}
+          className="w-8 h-8 rounded-xl flex items-center justify-center transition-all active:scale-95 backdrop-blur-sm"
+          style={{background:'rgba(20,40,80,0.7)',border:`1px solid ${isMuted?'rgba(255,100,100,0.4)':'rgba(79,195,247,0.3)'}`}}
+          title={isMuted?'음악 켜기':'음소거'}>
+          {isMuted
+            ? <VolumeX className="w-3.5 h-3.5 text-red-400"/>
+            : <Volume2 className="w-3.5 h-3.5 text-[#4fc3f7]"/>}
+        </button>
+        {/* 전체화면 버튼 */}
+        <button onClick={toggleFullscreen}
+          className="w-8 h-8 rounded-xl flex items-center justify-center transition-all active:scale-95 backdrop-blur-sm"
+          style={{background:'rgba(20,40,80,0.7)',border:'1px solid rgba(79,195,247,0.3)'}}
+          title={isFullscreen?'전체화면 해제':'전체화면'}>
+          {isFullscreen
+            ? <Minimize className="w-3.5 h-3.5 text-[#4fc3f7]"/>
+            : <Maximize className="w-3.5 h-3.5 text-[#4fc3f7]"/>}
+        </button>
+        {/* 나가기(멀티 해제) 버튼 */}
         <button onClick={leaveMultiplayer}
           className="w-8 h-8 rounded-xl flex items-center justify-center transition-all active:scale-95 backdrop-blur-sm"
-          style={{background:'rgba(60,20,20,0.6)',border:'1px solid rgba(255,100,100,0.3)'}}>
-          <X className="w-3.5 h-3.5 text-red-400"/>
+          style={{background:'rgba(60,20,20,0.6)',border:'1px solid rgba(255,100,100,0.3)'}}
+          title="멀티 나가기">
+          <LogOut className="w-3.5 h-3.5 text-red-400"/>
         </button>
       </div>
 
