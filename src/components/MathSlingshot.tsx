@@ -846,9 +846,14 @@ const MathSlingshot: React.FC = () => {
       }
     };
 
-    // ── rAF 기반 60fps 게임 루프 ──
+    // ── rAF 기반 게임 루프 (모바일 90/120Hz 과부하 방지: 60fps 캡) ──
+    const FRAME_MIN_MS = isMobile ? 1000/60 : 0; // 모바일만 60fps 상한
+    let lastFrameTime = 0;
     const gameLoop=(now:number)=>{
       rafRef.current=requestAnimationFrame(gameLoop);
+      // 모바일 고주사율 기기에서 프레임 스킵으로 60fps 유지
+      if(isMobile && now - lastFrameTime < FRAME_MIN_MS) return;
+      lastFrameTime = now;
       frameCountRef.current++;
 
       if(canvas.width!==container.clientWidth||canvas.height!==container.clientHeight){
@@ -875,8 +880,8 @@ const MathSlingshot: React.FC = () => {
       const pinchDist=latestPinchDist.current;
       const lm=latestLandmarks.current;
 
-      // 손 랜드마크 그리기 (offscreen에서 복사한 프레임 위에)
-      if(lm&&window.drawConnectors&&window.drawLandmarks){
+      // 손 랜드마크 그리기 — 모바일은 터치 전용이므로 스킵
+      if(!isMobile && lm&&window.drawConnectors&&window.drawLandmarks){
         ctx.save();
         ctx.globalAlpha=0.45;
         ctx.translate(canvas.width,0); ctx.scale(-1,1);
@@ -1278,14 +1283,23 @@ const MathSlingshot: React.FC = () => {
     // rAF 시작
     rafRef.current=requestAnimationFrame(gameLoop);
 
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || canvas.width < 600;
+    let handFrameCount = 0;
+
     if(window.Hands){
       hands=new window.Hands({locateFile:(f:string)=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`});
       hands.setOptions({maxNumHands:1,modelComplexity:0,minDetectionConfidence:.55,minTrackingConfidence:.55});
       hands.onResults(onResults);
       if(window.Camera){
         camera=new window.Camera(video,{
-          onFrame:async()=>{ if(videoRef.current&&hands) await hands.send({image:videoRef.current}); },
-          width:640,height:480,
+          onFrame:async()=>{
+            if(!videoRef.current||!hands) return;
+            // 모바일: 2프레임에 1번만 MediaPipe 실행 (CPU 부하 절반)
+            handFrameCount++;
+            if(isMobile && handFrameCount % 2 !== 0) return;
+            await hands.send({image:videoRef.current});
+          },
+          width:640, height:480,
         });
         camera.start();
       }
