@@ -20,7 +20,6 @@ const MAX_BUBBLES_PER_ROW     = 6;
 const INIT_ROWS               = 2;
 const GRID_ROWS               = 8;
 const SLINGSHOT_BOTTOM_OFFSET = 260; // 큐UI(90) + 구슬2개(~120) + 여유(50)
-// PC: 공을 화면 맨 위에 딱 붙임 (r 여백만), 모바일: HUD(~72px) 바로 아래
 const getGridTopPadding = (width: number): number => width >= 600 ? 0 : 72;
 
 // 화면 너비에 맞는 구슬 반지름 계산 (모바일 대응)
@@ -91,14 +90,15 @@ const makeQueueItem = (): BubbleQueueItem => {
   return { answer:ans, color:ANSWER_COLOR_MAP[ans]||'red', expression:rndExpr(ans) };
 };
 
-// ─── Marble sprite cache — 본체(구 그라데이션)만 캐시 ────────────────────────
+// ─── Marble sprite cache (오프스크린 캔버스 캐시 — 색+반지름 조합당 1회 생성) ────
 const marbleCache = new Map<string, HTMLCanvasElement>();
-function getMarbleSprite(r:number, color:BubbleColor, isHard:boolean): HTMLCanvasElement {
+const fullMarbleCache = new Map<string, HTMLCanvasElement>();
+const getMarbleSprite = (r:number, color:BubbleColor, isHard:boolean): HTMLCanvasElement => {
   const key = `${r}_${color}_${isHard?1:0}`;
   const cached = marbleCache.get(key);
   if(cached) return cached;
 
-  const pad = 10;
+  const pad = 10; // 그림자 번짐 여유
   const size = (r + pad) * 2;
   const oc = document.createElement('canvas');
   oc.width = size; oc.height = size;
@@ -109,11 +109,13 @@ function getMarbleSprite(r:number, color:BubbleColor, isHard:boolean): HTMLCanva
   const base = isHard ? '#5c5c7a' : cfg.hex;
   const dark = isHard ? '#2a2a44' : cfg.dark;
 
+  // 그림자 (캐시 안에서 한 번만)
   oc2.shadowColor = `${dark}99`;
   oc2.shadowBlur = 6;
   oc2.shadowOffsetX = 2;
   oc2.shadowOffsetY = 3;
 
+  // 본체 그라데이션
   const g = oc2.createRadialGradient(cx-r*.3, cy-r*.3, r*.05, cx, cy, r);
   g.addColorStop(0,'#ffffff'); g.addColorStop(0.2, adj(base,50));
   g.addColorStop(0.7, base); g.addColorStop(1, dark);
@@ -121,9 +123,11 @@ function getMarbleSprite(r:number, color:BubbleColor, isHard:boolean): HTMLCanva
   oc2.globalAlpha = sphereAlpha;
   oc2.beginPath(); oc2.arc(cx,cy,r,0,Math.PI*2); oc2.fillStyle=g; oc2.fill();
 
+  // 그림자 끄고 테두리/하이라이트
   oc2.shadowColor = 'transparent'; oc2.shadowBlur = 0; oc2.shadowOffsetX = 0; oc2.shadowOffsetY = 0;
   oc2.strokeStyle=dark+'66'; oc2.lineWidth=1; oc2.stroke();
 
+  // 하이라이트
   const hg = oc2.createRadialGradient(cx-r*.32, cy-r*.38, 0, cx-r*.2, cy-r*.2, r*.5);
   hg.addColorStop(0,'rgba(255,255,255,0.7)'); hg.addColorStop(1,'rgba(255,255,255,0)');
   oc2.beginPath(); oc2.arc(cx,cy,r,0,Math.PI*2); oc2.fillStyle=hg; oc2.fill();
@@ -132,79 +136,62 @@ function getMarbleSprite(r:number, color:BubbleColor, isHard:boolean): HTMLCanva
   return oc;
 };
 
-// ─── 텍스트 포함 완전 스프라이트 캐시 (expression + r + color + isHard) ────────
-// 그리드 구슬은 위치만 바뀌므로 expression별로 완전 캐시 → drawMarble 비용 ≈ 0
-const fullMarbleCache = new Map<string, HTMLCanvasElement>();
-function getFullMarbleSprite(r:number, color:BubbleColor, expression:string, isHard:boolean): HTMLCanvasElement {
+// ─── Full marble sprite (body + text baked in) ────────────────────────────────
+const getFullMarbleSprite = (r:number, color:BubbleColor, expression:string, isHard:boolean): HTMLCanvasElement => {
   const key = `${r}_${color}_${expression}_${isHard?1:0}`;
   const cached = fullMarbleCache.get(key);
   if(cached) return cached;
-
-  const pad = 10;
-  const size = (r + pad) * 2;
-  const oc = document.createElement('canvas');
-  oc.width = size; oc.height = size;
-  const oc2 = oc.getContext('2d')!;
-  const cx = size/2, cy = size/2;
-
-  // 본체 복사
-  const bodySprite = getMarbleSprite(r, color, isHard);
-  oc2.drawImage(bodySprite, 0, 0);
-
-  // 텍스트
-  const cfg = COLOR_CONFIG[color];
-  const dark = isHard ? '#2a2a44' : cfg.dark;
-  const len = expression.length;
-  const fs = len<=2?r*.78:len<=4?r*.60:len<=6?r*.50:r*.42;
-  oc2.globalAlpha = 1.0;
-  oc2.textAlign = 'center'; oc2.textBaseline = 'middle';
-  oc2.font = `900 ${fs}px 'Arial Black',sans-serif`;
-  oc2.strokeStyle = `${dark}99`; oc2.lineWidth = fs*.18; oc2.lineJoin = 'round';
-  oc2.strokeText(expression, cx, cy + fs*.04);
-  oc2.fillStyle = isHard ? 'rgba(210,210,255,0.95)' : 'rgba(255,255,255,0.95)';
-  oc2.fillText(expression, cx, cy + fs*.04);
-
-  fullMarbleCache.set(key, oc);
+  const pad=10, size=(r+pad)*2;
+  const oc=document.createElement('canvas');
+  oc.width=size; oc.height=size;
+  const oc2=oc.getContext('2d')!;
+  const cx=size/2, cy=size/2;
+  oc2.drawImage(getMarbleSprite(r,color,isHard),0,0);
+  const cfg=COLOR_CONFIG[color];
+  const dark=isHard?'#2a2a44':cfg.dark;
+  const disp=isHard?'?':expression;
+  const len=disp.length;
+  const fs=len<=2?r*.78:len<=4?r*.60:len<=6?r*.50:r*.42;
+  oc2.globalAlpha=1.0;
+  oc2.textAlign='center'; oc2.textBaseline='middle';
+  oc2.font=`900 ${fs}px 'Arial Black',sans-serif`;
+  oc2.strokeStyle=`${dark}99`; oc2.lineWidth=fs*.18; oc2.lineJoin='round';
+  oc2.strokeText(disp,cx,cy+fs*.04);
+  oc2.fillStyle=isHard?'rgba(210,210,255,0.95)':'rgba(255,255,255,0.95)';
+  oc2.fillText(disp,cx,cy+fs*.04);
+  fullMarbleCache.set(key,oc);
   return oc;
 };
 
 // ─── Marble drawing ───────────────────────────────────────────────────────────
-// alpha=1 정적 구슬은 fullMarbleCache로 단순 drawImage 1번
-// alpha<1 (낙하 구슬) 또는 shake(sx/sy≠0) 는 그대로
-function drawMarble(
+const drawMarble = (
   ctx:CanvasRenderingContext2D,
   x:number,y:number,r:number,
   color:BubbleColor,expression:string,
   isHard:boolean,alpha=1.0,sx=0,sy=0
-) {
+) => {
   const cx=x+sx, cy=y+sy;
-
-  if(alpha >= 1.0) {
-    // 완전 캐시: drawImage 1번으로 끝 (하드모드는 '?' 표시)
-    const dispExpr = isHard ? '?' : expression;
-    const sprite = getFullMarbleSprite(r, color, dispExpr, isHard);
-    const size = sprite.width;
-    ctx.drawImage(sprite, cx - size/2, cy - size/2);
+  if(alpha>=1.0){
+    const sprite=getFullMarbleSprite(r,color,expression,isHard);
+    ctx.drawImage(sprite,cx-sprite.width/2,cy-sprite.width/2);
     return;
   }
-
-  // 반투명(낙하 구슬 등): 본체만 캐시 + 텍스트 직접 렌더
-  const sprite = getMarbleSprite(r, color, isHard);
-  const size = sprite.width;
+  const sprite=getMarbleSprite(r,color,isHard);
+  const size=sprite.width;
   ctx.save();
-  ctx.globalAlpha = alpha;
-  ctx.drawImage(sprite, cx - size/2, cy - size/2);
-
-  const cfg = COLOR_CONFIG[color];
-  const dark = isHard ? '#2a2a44' : cfg.dark;
-  const len = expression.length;
-  const fs = len<=2?r*.78:len<=4?r*.60:len<=6?r*.50:r*.42;
+  ctx.globalAlpha=alpha;
+  ctx.drawImage(sprite,cx-size/2,cy-size/2);
+  const cfg=COLOR_CONFIG[color];
+  const dark=isHard?'#2a2a44':cfg.dark;
+  const disp=isHard?'?':expression;
+  const len=disp.length;
+  const fs=len<=2?r*.78:len<=4?r*.60:len<=6?r*.50:r*.42;
   ctx.textAlign='center'; ctx.textBaseline='middle';
   ctx.font=`900 ${fs}px 'Arial Black',sans-serif`;
   ctx.strokeStyle=`${dark}99`; ctx.lineWidth=fs*.18; ctx.lineJoin='round';
-  ctx.strokeText(expression,cx,cy+fs*.04);
+  ctx.strokeText(disp,cx,cy+fs*.04);
   ctx.fillStyle=isHard?'rgba(210,210,255,0.95)':'rgba(255,255,255,0.95)';
-  ctx.fillText(expression,cx,cy+fs*.04);
+  ctx.fillText(disp,cx,cy+fs*.04);
   ctx.restore();
 };
 
@@ -212,11 +199,11 @@ function drawMarble(
 let _slingshotCache: {ax:number;ay:number;poleG:CanvasGradient;lgG:CanvasGradient;rgG:CanvasGradient}|null = null;
 
 // ─── Slingshot drawing (개선된 디자인) ───────────────────────────────────────
-function drawSlingshot(
+const drawSlingshot = (
   ctx:CanvasRenderingContext2D,
   anchor:Point, ball:Point, canvasH:number,
   isPinching:boolean, isFlying:boolean
-) {
+) => {
   const ax=anchor.x, ay=anchor.y;
 
   // 그라데이션 캐시 (anchor 위치가 바뀌지 않으면 재사용)
@@ -269,11 +256,11 @@ function drawSlingshot(
   }
 };
 
-function drawOpponentBoard(
+const drawOpponentBoard = (
   ctx:CanvasRenderingContext2D,
   opp:{x:number;y:number;color:BubbleColor;expression:string}[],
   x:number,y:number,w:number,h:number
-) {
+) => {
   ctx.save();
   ctx.fillStyle='rgba(10,10,30,0.85)'; ctx.strokeStyle='rgba(100,150,255,0.4)'; ctx.lineWidth=1.5;
   const rd=8;
@@ -846,14 +833,13 @@ const MathSlingshot: React.FC = () => {
       }
     };
 
-    // ── rAF 기반 게임 루프 (모바일 90/120Hz 과부하 방지: 60fps 캡) ──
-    const FRAME_MIN_MS = isMobile ? 1000/60 : 0; // 모바일만 60fps 상한
-    let lastFrameTime = 0;
+    // ── rAF 기반 게임 루프 (모바일 고주사율 60fps 캡) ──
+    const FRAME_MIN_MS=isMobile?1000/60:0;
+    let lastFrameTime=0;
     const gameLoop=(now:number)=>{
       rafRef.current=requestAnimationFrame(gameLoop);
-      // 모바일 고주사율 기기에서 프레임 스킵으로 60fps 유지
-      if(isMobile && now - lastFrameTime < FRAME_MIN_MS) return;
-      lastFrameTime = now;
+      if(isMobile&&now-lastFrameTime<FRAME_MIN_MS) return;
+      lastFrameTime=now;
       frameCountRef.current++;
 
       if(canvas.width!==container.clientWidth||canvas.height!==container.clientHeight){
@@ -880,8 +866,8 @@ const MathSlingshot: React.FC = () => {
       const pinchDist=latestPinchDist.current;
       const lm=latestLandmarks.current;
 
-      // 손 랜드마크 그리기 — 모바일은 터치 전용이므로 스킵
-      if(!isMobile && lm&&window.drawConnectors&&window.drawLandmarks){
+      // 손 랜드마크 그리기 (offscreen에서 복사한 프레임 위에)
+      if(!isMobile&&lm&&window.drawConnectors&&window.drawLandmarks){
         ctx.save();
         ctx.globalAlpha=0.45;
         ctx.translate(canvas.width,0); ctx.scale(-1,1);
@@ -1139,13 +1125,12 @@ const MathSlingshot: React.FC = () => {
         ctx.globalAlpha=1.0;
       }
 
-      // ── Wavy danger line (무제한 모드는 없음) — 짝수 프레임만 재계산 ──
+      // ── Wavy danger line (무제한 모드는 없음) ──
       if(!isEndless){
         waveOffsetRef.current+=.04;
         const slY=canvas.height-SLINGSHOT_BOTTOM_OFFSET-BUBBLE_RADIUS*2;
         ctx.save();
         ctx.beginPath(); ctx.moveTo(0,slY);
-        // 스텝 24px: 시각적 차이 없지만 Math.sin 호출 절반으로 감소
         for(let wx=0;wx<=canvas.width;wx+=24) ctx.lineTo(wx,slY+Math.sin(wx/28+waveOffsetRef.current)*3.5);
         ctx.strokeStyle='rgba(80,160,255,0.55)'; ctx.lineWidth=2;
         ctx.stroke(); ctx.restore();
@@ -1168,25 +1153,24 @@ const MathSlingshot: React.FC = () => {
         const len=Math.sqrt(dx*dx+dy*dy);
         if(len>10){
           const collideR2=Math.pow(BUBBLE_RADIUS*1.85,2);
-          // ── 공간 버킷: 버블을 격자 셀에 배치해 raycast 충돌 체크를 O(1)에 가깝게 ──
-          const BUCKET_SIZE = BUBBLE_RADIUS * 4;
-          const bucketMap = new Map<string, Bubble[]>();
+          const BUCKET=BUBBLE_RADIUS*4;
+          const bktMap=new Map<string,Bubble[]>();
           for(const b of activeBubbles){
-            const bk = `${Math.floor(b.x/BUCKET_SIZE)}_${Math.floor(b.y/BUCKET_SIZE)}`;
-            if(!bucketMap.has(bk)) bucketMap.set(bk, []);
-            bucketMap.get(bk)!.push(b);
+            const bk=`${Math.floor(b.x/BUCKET)}_${Math.floor(b.y/BUCKET)}`;
+            if(!bktMap.has(bk)) bktMap.set(bk,[]);
+            bktMap.get(bk)!.push(b);
           }
-          const nearbyBubbles=(rx:number,ry:number):Bubble[]=>{
-            const cx2=Math.floor(rx/BUCKET_SIZE), cy2=Math.floor(ry/BUCKET_SIZE);
-            const result:Bubble[]=[];
-            for(let ddx2=-1;ddx2<=1;ddx2++) for(let ddy2=-1;ddy2<=1;ddy2++){
-              const arr=bucketMap.get(`${cx2+ddx2}_${cy2+ddy2}`);
-              if(arr) result.push(...arr);
+          const nearby=(rx:number,ry:number):Bubble[]=>{
+            const bx=Math.floor(rx/BUCKET),by=Math.floor(ry/BUCKET);
+            const res:Bubble[]=[];
+            for(let dx=-1;dx<=1;dx++) for(let dy=-1;dy<=1;dy++){
+              const a=bktMap.get(`${bx+dx}_${by+dy}`);
+              if(a) res.push(...a);
             }
-            return result;
+            return res;
           };
           const raycast=(sx:number,sy:number,vx:number,vy:number,skipFirst=false):{ex:number,ey:number,hit:boolean,wallHit:boolean}=>{
-            const stepSize=16; // 버킷 덕분에 step 크게 늘려도 정확
+            const stepSize=16;
             const maxDist=canvas.height*2;
             const steps=Math.ceil(maxDist/stepSize);
             let ex=sx,ey=sy;
@@ -1197,7 +1181,7 @@ const MathSlingshot: React.FC = () => {
                 return {ex:rx,ey:ry,hit:false,wallHit:true};
               }
               if(!skipFirst||s>1){
-                for(const b of nearbyBubbles(rx,ry)){
+                for(const b of nearby(rx,ry)){
                   if((rx-b.x)*(rx-b.x)+(ry-b.y)*(ry-b.y)<collideR2)
                     return {ex:rx,ey:ry,hit:true,wallHit:false};
                 }
@@ -1246,29 +1230,25 @@ const MathSlingshot: React.FC = () => {
         }
       }
 
-      // ── Particles (알파 버킷 배치 렌더링: globalAlpha 변경 횟수 최소화) ──
+      // ── Particles (색상별 배치 렌더링) ──
       if(particles.current.length>0){
-        const ALPHA_STEPS = 10;
-        type PtEntry = {x:number,y:number,color:string};
-        const alphaGroups = new Map<number, PtEntry[]>();
+        // 색상별로 그룹핑
+        const colorGroups=new Map<string,{x:number,y:number,r:number,alpha:number}[]>();
         for(let i=particles.current.length-1;i>=0;i--){
           const p=particles.current[i]; p.x+=p.vx;p.y+=p.vy;p.life-=.055;
           if(p.life<=0){particles.current.splice(i,1);continue;}
-          const bucket = Math.round(p.life * ALPHA_STEPS) / ALPHA_STEPS;
-          if(!alphaGroups.has(bucket)) alphaGroups.set(bucket,[]);
-          alphaGroups.get(bucket)!.push({x:p.x,y:p.y,color:p.color});
+          if(!colorGroups.has(p.color)) colorGroups.set(p.color,[]);
+          colorGroups.get(p.color)!.push({x:p.x,y:p.y,r:4,alpha:p.life});
         }
-        for(const [alpha, pts] of alphaGroups){
-          ctx.globalAlpha = alpha;
-          const byColor = new Map<string,PtEntry[]>();
-          for(const pt of pts){ if(!byColor.has(pt.color)) byColor.set(pt.color,[]); byColor.get(pt.color)!.push(pt); }
-          for(const [color, cpts] of byColor){
-            ctx.fillStyle = color;
-            ctx.beginPath();
-            // moveTo로 서브패스 시작 → arc끼리 선으로 연결되는 현상 방지
-            for(const pt of cpts){ ctx.moveTo(pt.x+4,pt.y); ctx.arc(pt.x,pt.y,4,0,Math.PI*2); }
-            ctx.fill();
+        for(const [color,pts] of colorGroups){
+          // 같은 알파끼리 완전 배치는 불가하지만, beginPath는 한 번만
+          ctx.fillStyle=color;
+          ctx.beginPath();
+          for(const pt of pts){
+            ctx.globalAlpha=pt.alpha;
+            ctx.moveTo(pt.x+4,pt.y); ctx.arc(pt.x,pt.y,4,0,Math.PI*2);
           }
+          ctx.fill();
         }
         ctx.globalAlpha=1.0;
       }
@@ -1283,8 +1263,8 @@ const MathSlingshot: React.FC = () => {
     // rAF 시작
     rafRef.current=requestAnimationFrame(gameLoop);
 
-    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || canvas.width < 600;
-    let handFrameCount = 0;
+    const isMobile=/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)||canvas.width<600;
+    let handFrameCount=0;
 
     if(window.Hands){
       hands=new window.Hands({locateFile:(f:string)=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`});
@@ -1294,12 +1274,11 @@ const MathSlingshot: React.FC = () => {
         camera=new window.Camera(video,{
           onFrame:async()=>{
             if(!videoRef.current||!hands) return;
-            // 모바일: 2프레임에 1번만 MediaPipe 실행 (CPU 부하 절반)
             handFrameCount++;
-            if(isMobile && handFrameCount % 2 !== 0) return;
+            if(isMobile && handFrameCount%2!==0) return;
             await hands.send({image:videoRef.current});
           },
-          width:640, height:480,
+          width:640,height:480,
         });
         camera.start();
       }
@@ -1494,7 +1473,6 @@ const MathSlingshot: React.FC = () => {
             <p className="text-xl font-bold text-white leading-tight">{score.toLocaleString()}</p>
           </div>
         </div>
-
       </div>
 
       {/* HUD - 우측 상단 버튼들 */}
