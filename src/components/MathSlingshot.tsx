@@ -20,7 +20,8 @@ const MAX_BUBBLES_PER_ROW     = 6;
 const INIT_ROWS               = 2;
 const GRID_ROWS               = 8;
 const SLINGSHOT_BOTTOM_OFFSET = 260; // 큐UI(90) + 구슬2개(~120) + 여유(50)
-const GRID_TOP_PADDING        = 100; // 상단 HUD 아래 여백
+// PC: 공을 화면 맨 위에 딱 붙임 (r 여백만), 모바일: HUD(~72px) 바로 아래
+const getGridTopPadding = (width: number): number => width >= 600 ? 0 : 72;
 
 // 화면 너비에 맞는 구슬 반지름 계산 (모바일 대응)
 const calcRadius = (width: number): number => {
@@ -510,7 +511,7 @@ const MathSlingshot: React.FC = () => {
     const xOffset=(width-GRID_COLS*r*2)/2+r;
     return {
       x: xOffset+col*(r*2)+(row%2!==0?r:0),
-      y: GRID_TOP_PADDING + r + row*rh,
+      y: getGridTopPadding(width) + r + row*rh,
     };
   };
 
@@ -571,7 +572,7 @@ const MathSlingshot: React.FC = () => {
     for(let i=0;i<20;i++){
       const px=minX+Math.random()*(maxX-minX);
       dustParticles.current.push({
-        x:px, y:GRID_TOP_PADDING+BUBBLE_RADIUS*2+Math.random()*8,
+        x:px, y:getGridTopPadding(cw)+BUBBLE_RADIUS*2+Math.random()*8,
         vx:(Math.random()-.5)*2.5, vy:Math.random()*1.2+0.2,
         life:.6+Math.random()*.4, color:`hsl(${40+Math.random()*20},50%,65%)`,
       });
@@ -1016,7 +1017,7 @@ const MathSlingshot: React.FC = () => {
               ballVel.current.x*=-1;
               ballPos.current.x=Math.max(BUBBLE_RADIUS,Math.min(canvas.width-BUBBLE_RADIUS,ballPos.current.x));
             }
-            if(ballPos.current.y<GRID_TOP_PADDING+BUBBLE_RADIUS){hit=true;break;}
+            if(ballPos.current.y<getGridTopPadding(canvas.width)+BUBBLE_RADIUS){hit=true;break;}
             const bpx=ballPos.current.x, bpy=ballPos.current.y;
             const collR2=Math.pow(BUBBLE_RADIUS*1.9,2);
             for(const b of activeBubbles){
@@ -1061,7 +1062,7 @@ const MathSlingshot: React.FC = () => {
               }
             }
             // 천장 row(0)도 후보에 추가 (첫 줄 착지용)
-            if(activeBubbles.length===0||ballPos.current.y<GRID_TOP_PADDING+BUBBLE_RADIUS*4){
+            if(activeBubbles.length===0||ballPos.current.y<getGridTopPadding(canvas.width)+BUBBLE_RADIUS*4){
               const cols0=GRID_COLS;
               for(let c=0;c<cols0;c++){
                 const key=`0_${c}`;
@@ -1186,7 +1187,7 @@ const MathSlingshot: React.FC = () => {
             let ex=sx,ey=sy;
             for(let s=1;s<=steps;s++){
               const rx=sx+vx*stepSize*s, ry=sy+vy*stepSize*s;
-              if(ry<GRID_TOP_PADDING+BUBBLE_RADIUS) return {ex:rx,ey:ry,hit:true,wallHit:false};
+              if(ry<getGridTopPadding(canvas.width)+BUBBLE_RADIUS) return {ex:rx,ey:ry,hit:true,wallHit:false};
               if(rx<BUBBLE_RADIUS||rx>canvas.width-BUBBLE_RADIUS){
                 return {ex:rx,ey:ry,hit:false,wallHit:true};
               }
@@ -1479,17 +1480,7 @@ const MathSlingshot: React.FC = () => {
             <p className="text-xl font-bold text-white leading-tight">{score.toLocaleString()}</p>
           </div>
         </div>
-        <div className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest text-center border backdrop-blur-sm ${
-          isHardMode?'bg-[#ab47bc]/30 border-[#ab47bc] text-[#ab47bc]':'bg-[#66bb6a]/20 border-[#66bb6a]/50 text-[#66bb6a]'
-        }`}>
-          {isHardMode?'⚡ 하드 ×1.5':'🎨 쉬운 모드'}
-        </div>
-        {!isHardMode&&gamePhase==='playing'&&(
-          <div className="px-2.5 py-1 rounded-full text-[9px] text-center border border-[#333] backdrop-blur-sm"
-            style={{color:'#888',background:'rgba(30,30,30,0.7)'}}>
-            아래 착지 {downLandCount}/3 → 하드
-          </div>
-        )}
+
       </div>
 
       {/* HUD - 우측 상단 버튼들 */}
