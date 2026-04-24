@@ -93,7 +93,7 @@ const makeQueueItem = (): BubbleQueueItem => {
 
 // ─── Marble sprite cache — 본체(구 그라데이션)만 캐시 ────────────────────────
 const marbleCache = new Map<string, HTMLCanvasElement>();
-const getMarbleSprite = (r:number, color:BubbleColor, isHard:boolean): HTMLCanvasElement => {
+function getMarbleSprite(r:number, color:BubbleColor, isHard:boolean): HTMLCanvasElement {
   const key = `${r}_${color}_${isHard?1:0}`;
   const cached = marbleCache.get(key);
   if(cached) return cached;
@@ -135,7 +135,7 @@ const getMarbleSprite = (r:number, color:BubbleColor, isHard:boolean): HTMLCanva
 // ─── 텍스트 포함 완전 스프라이트 캐시 (expression + r + color + isHard) ────────
 // 그리드 구슬은 위치만 바뀌므로 expression별로 완전 캐시 → drawMarble 비용 ≈ 0
 const fullMarbleCache = new Map<string, HTMLCanvasElement>();
-const getFullMarbleSprite = (r:number, color:BubbleColor, expression:string, isHard:boolean): HTMLCanvasElement => {
+function getFullMarbleSprite(r:number, color:BubbleColor, expression:string, isHard:boolean): HTMLCanvasElement {
   const key = `${r}_${color}_${expression}_${isHard?1:0}`;
   const cached = fullMarbleCache.get(key);
   if(cached) return cached;
@@ -171,12 +171,12 @@ const getFullMarbleSprite = (r:number, color:BubbleColor, expression:string, isH
 // ─── Marble drawing ───────────────────────────────────────────────────────────
 // alpha=1 정적 구슬은 fullMarbleCache로 단순 drawImage 1번
 // alpha<1 (낙하 구슬) 또는 shake(sx/sy≠0) 는 그대로
-const drawMarble = (
+function drawMarble(
   ctx:CanvasRenderingContext2D,
   x:number,y:number,r:number,
   color:BubbleColor,expression:string,
   isHard:boolean,alpha=1.0,sx=0,sy=0
-) => {
+) {
   const cx=x+sx, cy=y+sy;
 
   if(alpha >= 1.0) {
@@ -212,11 +212,11 @@ const drawMarble = (
 let _slingshotCache: {ax:number;ay:number;poleG:CanvasGradient;lgG:CanvasGradient;rgG:CanvasGradient}|null = null;
 
 // ─── Slingshot drawing (개선된 디자인) ───────────────────────────────────────
-const drawSlingshot = (
+function drawSlingshot(
   ctx:CanvasRenderingContext2D,
   anchor:Point, ball:Point, canvasH:number,
   isPinching:boolean, isFlying:boolean
-) => {
+) {
   const ax=anchor.x, ay=anchor.y;
 
   // 그라데이션 캐시 (anchor 위치가 바뀌지 않으면 재사용)
@@ -269,11 +269,11 @@ const drawSlingshot = (
   }
 };
 
-const drawOpponentBoard = (
+function drawOpponentBoard(
   ctx:CanvasRenderingContext2D,
   opp:{x:number;y:number;color:BubbleColor;expression:string}[],
   x:number,y:number,w:number,h:number
-) => {
+) {
   ctx.save();
   ctx.fillStyle='rgba(10,10,30,0.85)'; ctx.strokeStyle='rgba(100,150,255,0.4)'; ctx.lineWidth=1.5;
   const rd=8;
