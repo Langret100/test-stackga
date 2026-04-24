@@ -1243,7 +1243,6 @@ const MathSlingshot: React.FC = () => {
 
       // ── Particles (알파 버킷 배치 렌더링: globalAlpha 변경 횟수 최소화) ──
       if(particles.current.length>0){
-        // 알파를 10단계로 양자화해 그룹화 → ctx.globalAlpha 변경 횟수 대폭 감소
         const ALPHA_STEPS = 10;
         type PtEntry = {x:number,y:number,color:string};
         const alphaGroups = new Map<number, PtEntry[]>();
@@ -1261,7 +1260,8 @@ const MathSlingshot: React.FC = () => {
           for(const [color, cpts] of byColor){
             ctx.fillStyle = color;
             ctx.beginPath();
-            for(const pt of cpts) ctx.arc(pt.x,pt.y,4,0,Math.PI*2);
+            // moveTo로 서브패스 시작 → arc끼리 선으로 연결되는 현상 방지
+            for(const pt of cpts){ ctx.moveTo(pt.x+4,pt.y); ctx.arc(pt.x,pt.y,4,0,Math.PI*2); }
             ctx.fill();
           }
         }
