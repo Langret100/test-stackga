@@ -20,7 +20,7 @@ const MAX_BUBBLES_PER_ROW     = 6;
 const INIT_ROWS               = 2;
 const GRID_ROWS               = 8;
 const SLINGSHOT_BOTTOM_OFFSET = 260; // 큐UI(90) + 구슬2개(~120) + 여유(50)
-const getGridTopPadding = (width: number): number => width >= 600 ? 0 : 72;
+const getGridTopPadding = (w: number): number => w >= 600 ? 0 : 72; // PC: 천장 붙임, 모바일: HUD 아래
 
 // 화면 너비에 맞는 구슬 반지름 계산 (모바일 대응)
 const calcRadius = (width: number): number => {
@@ -92,7 +92,6 @@ const makeQueueItem = (): BubbleQueueItem => {
 
 // ─── Marble sprite cache (오프스크린 캔버스 캐시 — 색+반지름 조합당 1회 생성) ────
 const marbleCache = new Map<string, HTMLCanvasElement>();
-const fullMarbleCache = new Map<string, HTMLCanvasElement>();
 const getMarbleSprite = (r:number, color:BubbleColor, isHard:boolean): HTMLCanvasElement => {
   const key = `${r}_${color}_${isHard?1:0}`;
   const cached = marbleCache.get(key);
@@ -136,33 +135,6 @@ const getMarbleSprite = (r:number, color:BubbleColor, isHard:boolean): HTMLCanva
   return oc;
 };
 
-// ─── Full marble sprite (body + text baked in) ────────────────────────────────
-const getFullMarbleSprite = (r:number, color:BubbleColor, expression:string, isHard:boolean): HTMLCanvasElement => {
-  const key = `${r}_${color}_${expression}_${isHard?1:0}`;
-  const cached = fullMarbleCache.get(key);
-  if(cached) return cached;
-  const pad=10, size=(r+pad)*2;
-  const oc=document.createElement('canvas');
-  oc.width=size; oc.height=size;
-  const oc2=oc.getContext('2d')!;
-  const cx=size/2, cy=size/2;
-  oc2.drawImage(getMarbleSprite(r,color,isHard),0,0);
-  const cfg=COLOR_CONFIG[color];
-  const dark=isHard?'#2a2a44':cfg.dark;
-  const disp=isHard?'?':expression;
-  const len=disp.length;
-  const fs=len<=2?r*.78:len<=4?r*.60:len<=6?r*.50:r*.42;
-  oc2.globalAlpha=1.0;
-  oc2.textAlign='center'; oc2.textBaseline='middle';
-  oc2.font=`900 ${fs}px 'Arial Black',sans-serif`;
-  oc2.strokeStyle=`${dark}99`; oc2.lineWidth=fs*.18; oc2.lineJoin='round';
-  oc2.strokeText(disp,cx,cy+fs*.04);
-  oc2.fillStyle=isHard?'rgba(210,210,255,0.95)':'rgba(255,255,255,0.95)';
-  oc2.fillText(disp,cx,cy+fs*.04);
-  fullMarbleCache.set(key,oc);
-  return oc;
-};
-
 // ─── Marble drawing ───────────────────────────────────────────────────────────
 const drawMarble = (
   ctx:CanvasRenderingContext2D,
@@ -171,27 +143,25 @@ const drawMarble = (
   isHard:boolean,alpha=1.0,sx=0,sy=0
 ) => {
   const cx=x+sx, cy=y+sy;
-  if(alpha>=1.0){
-    const sprite=getFullMarbleSprite(r,color,expression,isHard);
-    ctx.drawImage(sprite,cx-sprite.width/2,cy-sprite.width/2);
-    return;
-  }
-  const sprite=getMarbleSprite(r,color,isHard);
-  const size=sprite.width;
+  const sprite = getMarbleSprite(r, color, isHard);
+  const size = sprite.width;
+
   ctx.save();
-  ctx.globalAlpha=alpha;
-  ctx.drawImage(sprite,cx-size/2,cy-size/2);
-  const cfg=COLOR_CONFIG[color];
-  const dark=isHard?'#2a2a44':cfg.dark;
-  const disp=isHard?'?':expression;
-  const len=disp.length;
+  if(alpha<1) ctx.globalAlpha=alpha;
+  ctx.drawImage(sprite, cx - size/2, cy - size/2);
+
+  // 텍스트 (매번 그려야 하지만 shadowBlur 없이)
+  const cfg = COLOR_CONFIG[color];
+  const dark = isHard ? '#2a2a44' : cfg.dark;
+  ctx.globalAlpha = alpha;
+  const len=expression.length;
   const fs=len<=2?r*.78:len<=4?r*.60:len<=6?r*.50:r*.42;
   ctx.textAlign='center'; ctx.textBaseline='middle';
   ctx.font=`900 ${fs}px 'Arial Black',sans-serif`;
   ctx.strokeStyle=`${dark}99`; ctx.lineWidth=fs*.18; ctx.lineJoin='round';
-  ctx.strokeText(disp,cx,cy+fs*.04);
+  ctx.strokeText(expression,cx,cy+fs*.04);
   ctx.fillStyle=isHard?'rgba(210,210,255,0.95)':'rgba(255,255,255,0.95)';
-  ctx.fillText(disp,cx,cy+fs*.04);
+  ctx.fillText(expression,cx,cy+fs*.04);
   ctx.restore();
 };
 
@@ -779,7 +749,7 @@ const MathSlingshot: React.FC = () => {
     canvas.style.width=cw+'px'; canvas.style.height=ch+'px';
     BUBBLE_RADIUS=calcRadius(canvas.width);
     ROW_HEIGHT=BUBBLE_RADIUS*Math.sqrt(3);
-    marbleCache.clear(); fullMarbleCache.clear();
+    marbleCache.clear();
     _slingshotCache=null;
     anchorPos.current={x:canvas.width/2,y:canvas.height-SLINGSHOT_BOTTOM_OFFSET};
     ballPos.current={...anchorPos.current};
@@ -834,12 +804,12 @@ const MathSlingshot: React.FC = () => {
     };
 
     // ── rAF 기반 게임 루프 (모바일 고주사율 60fps 캡) ──
-    const FRAME_MIN_MS=isMobile?1000/60:0;
-    let lastFrameTime=0;
+    const _fMin=_isMob?1000/60:0;
+    let _lastT=0;
     const gameLoop=(now:number)=>{
       rafRef.current=requestAnimationFrame(gameLoop);
-      if(isMobile&&now-lastFrameTime<FRAME_MIN_MS) return;
-      lastFrameTime=now;
+      if(_isMob&&now-_lastT<_fMin) return;
+      _lastT=now;
       frameCountRef.current++;
 
       if(canvas.width!==container.clientWidth||canvas.height!==container.clientHeight){
@@ -851,7 +821,7 @@ const MathSlingshot: React.FC = () => {
         if(!isFlying.current&&!isPinching.current) ballPos.current={...anchorPos.current};
         BUBBLE_RADIUS=calcRadius(cw);
         ROW_HEIGHT=BUBBLE_RADIUS*Math.sqrt(3);
-        marbleCache.clear(); fullMarbleCache.clear();
+        marbleCache.clear();
         _slingshotCache=null;
       }
 
@@ -867,7 +837,7 @@ const MathSlingshot: React.FC = () => {
       const lm=latestLandmarks.current;
 
       // 손 랜드마크 그리기 (offscreen에서 복사한 프레임 위에)
-      if(!isMobile&&lm&&window.drawConnectors&&window.drawLandmarks){
+      if(!_isMob&&lm&&window.drawConnectors&&window.drawLandmarks){
         ctx.save();
         ctx.globalAlpha=0.45;
         ctx.translate(canvas.width,0); ctx.scale(-1,1);
@@ -1154,7 +1124,7 @@ const MathSlingshot: React.FC = () => {
         if(len>10){
           const collideR2=Math.pow(BUBBLE_RADIUS*1.85,2);
           const raycast=(sx:number,sy:number,vx:number,vy:number,skipFirst=false):{ex:number,ey:number,hit:boolean,wallHit:boolean}=>{
-            const stepSize=16;
+            const stepSize=14; // 6→14: 정밀도 약간 낮추고 속도 대폭 향상
             const maxDist=canvas.height*2;
             const steps=Math.ceil(maxDist/stepSize);
             let ex=sx,ey=sy;
@@ -1165,7 +1135,7 @@ const MathSlingshot: React.FC = () => {
                 return {ex:rx,ey:ry,hit:false,wallHit:true};
               }
               if(!skipFirst||s>1){
-                for(const b of activeBubbles){
+                for(const b of activeBubbles){ // filter 결과 재사용
                   if((rx-b.x)*(rx-b.x)+(ry-b.y)*(ry-b.y)<collideR2)
                     return {ex:rx,ey:ry,hit:true,wallHit:false};
                 }
@@ -1247,9 +1217,8 @@ const MathSlingshot: React.FC = () => {
     // rAF 시작
     rafRef.current=requestAnimationFrame(gameLoop);
 
-    const isMobile=/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)||canvas.width<600;
-    let handFrameCount=0;
-
+    const _isMob=/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)||canvas.width<600;
+    let _hfc=0;
     if(window.Hands){
       hands=new window.Hands({locateFile:(f:string)=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`});
       hands.setOptions({maxNumHands:1,modelComplexity:0,minDetectionConfidence:.55,minTrackingConfidence:.55});
@@ -1258,8 +1227,8 @@ const MathSlingshot: React.FC = () => {
         camera=new window.Camera(video,{
           onFrame:async()=>{
             if(!videoRef.current||!hands) return;
-            handFrameCount++;
-            if(isMobile && handFrameCount%2!==0) return;
+            _hfc++;
+            if(_isMob&&_hfc%2!==0) return;
             await hands.send({image:videoRef.current});
           },
           width:640,height:480,
@@ -1457,6 +1426,7 @@ const MathSlingshot: React.FC = () => {
             <p className="text-xl font-bold text-white leading-tight">{score.toLocaleString()}</p>
           </div>
         </div>
+
       </div>
 
       {/* HUD - 우측 상단 버튼들 */}
