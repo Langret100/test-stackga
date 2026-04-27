@@ -826,6 +826,11 @@ const MathSlingshot: React.FC = () => {
         ROW_HEIGHT=BUBBLE_RADIUS*Math.sqrt(3);
         marbleCache.clear();
         _slingshotCache=null;
+        // 리사이즈 후 기존 구슬 위치 재계산 (겹침 방지)
+        bubbles.current.forEach(b=>{
+          const p=getBubblePos(b.row,b.col,cw);
+          b.x=p.x; b.y=p.y;
+        });
       }
 
       ctx.clearRect(0,0,canvas.width,canvas.height);
@@ -1005,6 +1010,8 @@ const MathSlingshot: React.FC = () => {
 
             // ── 착지 위치 결정: 기존 구슬에 인접한 빈 칸 중 가장 가까운 곳 ──
             const occupiedSet=new Set(activeBubbles.map(b=>`${b.row}_${b.col}`));
+            // 기존 구슬 위치를 getBubblePos 기준으로 재동기화 (리사이즈 후 어긋남 방지)
+            activeBubbles.forEach(b=>{ const p=getBubblePos(b.row,b.col,canvas.width); b.x=p.x; b.y=p.y; });
             const SNAP_DIST=BUBBLE_RADIUS*2.15; // 구슬 지름 + 여유
             let bd=Infinity,br=0,bc=0,bx=0,by=0;
 
@@ -1230,7 +1237,8 @@ const MathSlingshot: React.FC = () => {
           onFrame:async()=>{
             if(!videoRef.current||!hands) return;
             _hfc++;
-            if(_isMob&&_hfc%2!==0) return;
+            // 모바일: 3프레임에 1번으로 더 줄임 (끊김 개선)
+            if(_isMob&&_hfc%3!==0) return;
             await hands.send({image:videoRef.current});
           },
           width:640,height:480,
