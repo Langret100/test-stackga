@@ -803,6 +803,9 @@ const MathSlingshot: React.FC = () => {
       }
     };
 
+    // ── 모바일 감지 ──
+    const _isMob=/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)||canvas.width<600;
+
     // ── rAF 기반 게임 루프 (모바일 고주사율 60fps 캡) ──
     const _fMin=_isMob?1000/60:0;
     let _lastT=0;
@@ -1217,7 +1220,6 @@ const MathSlingshot: React.FC = () => {
     // rAF 시작
     rafRef.current=requestAnimationFrame(gameLoop);
 
-    const _isMob=/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)||canvas.width<600;
     let _hfc=0;
     if(window.Hands){
       hands=new window.Hands({locateFile:(f:string)=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`});
