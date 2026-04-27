@@ -294,6 +294,7 @@ const MathSlingshot: React.FC = () => {
   const touchPosRef         = useRef<Point>({x:0,y:0});
   // MediaPipe에서 추출한 최신 손 정보 (rAF 루프에서 사용)
   const latestHandPos       = useRef<Point|null>(null);
+  const handHoverRef        = useRef<{key:string;startT:number}|null>(null); // 손바닥 버튼 호버 추적
   const latestPinchDist     = useRef<number>(1.0);
   const latestLandmarks     = useRef<any>(null);
   // 손 위치 스무딩 (EMA)
@@ -622,7 +623,8 @@ const MathSlingshot: React.FC = () => {
 
   const addNewRow=(cw:number)=>{
     bubbles.current=bubbles.current.filter(b=>b.active);
-    bubbles.current.forEach(b=>{b.row++;b.y+=ROW_HEIGHT;});
+    const _rh=calcRadius(canvasRef.current?.width||800)*Math.sqrt(3);
+    bubbles.current.forEach(b=>{b.row++;b.y+=_rh;});
     const newBubbles=makeRow(0,cw);
     bubbles.current.push(...newBubbles);
     dropFloatingBubbles();
@@ -864,6 +866,42 @@ const MathSlingshot: React.FC = () => {
         }
       }
 
+      // ── 손바닥 버튼 호버 (pinch 아닌 상태에서 1초 호버 → 클릭) ──
+      if(handPos && pinchDist >= PINCH_THRESHOLD && canvasRef.current){
+        const rect = canvasRef.current.getBoundingClientRect();
+        const scaleX = rect.width / canvas.width;
+        const scaleY = rect.height / canvas.height;
+        const screenX = rect.left + handPos.x * scaleX;
+        const screenY = rect.top  + handPos.y * scaleY;
+        const els = document.elementsFromPoint(screenX, screenY);
+        const btn = els.find(el => el instanceof HTMLButtonElement && el.dataset.handHover) as HTMLButtonElement|undefined;
+        if(btn){
+          const key = btn.dataset.handHover!;
+          const now2 = performance.now();
+          if(!handHoverRef.current || handHoverRef.current.key !== key){
+            handHoverRef.current = {key, startT: now2};
+          } else if(now2 - handHoverRef.current.startT >= 1000){
+            handHoverRef.current = null;
+            btn.click();
+          }
+          // 호버 진행 원형 표시
+          if(handHoverRef.current){
+            const prog = Math.min(1,(performance.now()-handHoverRef.current.startT)/1000);
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(handPos.x, handPos.y, 22, -Math.PI/2, -Math.PI/2 + Math.PI*2*prog);
+            ctx.strokeStyle = 'rgba(79,195,247,0.9)';
+            ctx.lineWidth = 4;
+            ctx.stroke();
+            ctx.restore();
+          }
+        } else {
+          handHoverRef.current = null;
+        }
+      } else if(pinchDist < PINCH_THRESHOLD) {
+        handHoverRef.current = null;
+      }
+
       const isPlaying=gamePhaseRef.current==='playing';
       const isHard=gameModeRef.current==='hard';
       const isEndless=gameModeTypeRef.current==='endless';
@@ -1082,7 +1120,7 @@ const MathSlingshot: React.FC = () => {
       }
 
       for(const b of activeBubbles){
-        drawMarble(ctx,b.x,b.y,BUBBLE_RADIUS-1,b.color,b.expression,isHard,1.0,doShake?gsx:0,doShake?gsy:0);
+        drawMarble(ctx,b.x,b.y,BUBBLE_RADIUS,b.color,b.expression,isHard,1.0,doShake?gsx:0,doShake?gsy:0);
       }
 
       // ── Falling bubbles ──
@@ -1090,7 +1128,7 @@ const MathSlingshot: React.FC = () => {
         const fb=fallingBubbles.current[i];
         fb.y+=fb.vy; fb.vy+=FALL_GRAVITY; fb.alpha-=0.022;
         if(fb.alpha<=0||fb.y>canvas.height){fallingBubbles.current.splice(i,1);continue;}
-        drawMarble(ctx,fb.x,fb.y,BUBBLE_RADIUS-1,fb.color,fb.expression,isHard,fb.alpha);
+        drawMarble(ctx,fb.x,fb.y,BUBBLE_RADIUS,fb.color,fb.expression,isHard,fb.alpha);
       }
 
       // ── Dust (배치 렌더링: path 한 번에 묶기) ──
@@ -1237,9 +1275,9 @@ const MathSlingshot: React.FC = () => {
           onFrame:async()=>{
             if(!videoRef.current||!hands) return;
             _hfc++;
-            // 모바일: 3프레임에 1번으로 더 줄임 (끊김 개선)
             if(_isMob&&_hfc%3!==0) return;
-            await hands.send({image:videoRef.current});
+            // setTimeout(0)으로 게임루프 프레임과 분리 → 메인스레드 블로킹 방지
+            setTimeout(()=>{ hands.send({image:videoRef.current!}); }, 0);
           },
           width:640,height:480,
         });
@@ -1339,11 +1377,13 @@ const MathSlingshot: React.FC = () => {
             {/* 모드 선택 버튼 */}
             <div className="w-full grid grid-cols-2 gap-3 mt-1">
               <button onClick={()=>handleStart('normal')}
+                data-hand-hover="start-normal"
                 className="py-4 rounded-2xl font-black text-lg transition-all active:scale-95"
                 style={{background:'linear-gradient(135deg,#4fc3f7,#42a5f5)',color:'#0a0a1a',boxShadow:'0 0 20px rgba(79,195,247,0.4)'}}>
                 START!
               </button>
               <button onClick={()=>handleStart('endless')}
+                data-hand-hover="start-endless"
                 disabled={multiStatus!=='idle'}
                 className="py-4 rounded-2xl font-black text-lg transition-all active:scale-95 flex flex-col items-center justify-center gap-0.5 disabled:opacity-40 disabled:cursor-not-allowed"
                 style={{background:'linear-gradient(135deg,#ab47bc,#7b1fa2)',color:'white',boxShadow:'0 0 20px rgba(171,71,188,0.4)'}}>
@@ -1417,6 +1457,7 @@ const MathSlingshot: React.FC = () => {
               <p className="text-4xl font-black text-white">{finalScore.toLocaleString()}</p>
             </div>
             <button onClick={restartGame}
+              data-hand-hover="restart"
               className="flex items-center gap-2 px-8 py-3 rounded-2xl font-bold text-lg transition-all active:scale-95"
               style={{background:'linear-gradient(135deg,#ef5350,#ab47bc)',boxShadow:'0 4px 20px rgba(239,83,80,0.4)'}}>
               <RefreshCw className="w-5 h-5"/> 다시 시작
