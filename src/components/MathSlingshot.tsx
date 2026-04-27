@@ -1153,22 +1153,6 @@ const MathSlingshot: React.FC = () => {
         const len=Math.sqrt(dx*dx+dy*dy);
         if(len>10){
           const collideR2=Math.pow(BUBBLE_RADIUS*1.85,2);
-          const BUCKET=BUBBLE_RADIUS*4;
-          const bktMap=new Map<string,Bubble[]>();
-          for(const b of activeBubbles){
-            const bk=`${Math.floor(b.x/BUCKET)}_${Math.floor(b.y/BUCKET)}`;
-            if(!bktMap.has(bk)) bktMap.set(bk,[]);
-            bktMap.get(bk)!.push(b);
-          }
-          const nearby=(rx:number,ry:number):Bubble[]=>{
-            const bx=Math.floor(rx/BUCKET),by=Math.floor(ry/BUCKET);
-            const res:Bubble[]=[];
-            for(let dx=-1;dx<=1;dx++) for(let dy=-1;dy<=1;dy++){
-              const a=bktMap.get(`${bx+dx}_${by+dy}`);
-              if(a) res.push(...a);
-            }
-            return res;
-          };
           const raycast=(sx:number,sy:number,vx:number,vy:number,skipFirst=false):{ex:number,ey:number,hit:boolean,wallHit:boolean}=>{
             const stepSize=16;
             const maxDist=canvas.height*2;
@@ -1181,7 +1165,7 @@ const MathSlingshot: React.FC = () => {
                 return {ex:rx,ey:ry,hit:false,wallHit:true};
               }
               if(!skipFirst||s>1){
-                for(const b of nearby(rx,ry)){
+                for(const b of activeBubbles){
                   if((rx-b.x)*(rx-b.x)+(ry-b.y)*(ry-b.y)<collideR2)
                     return {ex:rx,ey:ry,hit:true,wallHit:false};
                 }
