@@ -20,7 +20,7 @@ const MAX_BUBBLES_PER_ROW     = 6;
 const INIT_ROWS               = 2;
 const GRID_ROWS               = 8;
 const SLINGSHOT_BOTTOM_OFFSET = 260; // 큐UI(90) + 구슬2개(~120) + 여유(50)
-const getGridTopPadding = (w: number): number => w >= 600 ? 0 : 72; // PC: 천장 붙임, 모바일: HUD 아래
+const GRID_TOP_PADDING        = 100; // 상단 HUD 아래 여백
 
 // 화면 너비에 맞는 구슬 반지름 계산 (모바일 대응)
 const calcRadius = (width: number): number => {
@@ -468,7 +468,7 @@ const MathSlingshot: React.FC = () => {
     const xOffset=(width-GRID_COLS*r*2)/2+r;
     return {
       x: xOffset+col*(r*2)+(row%2!==0?r:0),
-      y: getGridTopPadding(width) + r + row*rh,
+      y: GRID_TOP_PADDING + r + row*rh,
     };
   };
 
@@ -529,7 +529,7 @@ const MathSlingshot: React.FC = () => {
     for(let i=0;i<20;i++){
       const px=minX+Math.random()*(maxX-minX);
       dustParticles.current.push({
-        x:px, y:getGridTopPadding(cw)+BUBBLE_RADIUS*2+Math.random()*8,
+        x:px, y:GRID_TOP_PADDING+BUBBLE_RADIUS*2+Math.random()*8,
         vx:(Math.random()-.5)*2.5, vy:Math.random()*1.2+0.2,
         life:.6+Math.random()*.4, color:`hsl(${40+Math.random()*20},50%,65%)`,
       });
@@ -803,13 +803,9 @@ const MathSlingshot: React.FC = () => {
       }
     };
 
-    // ── rAF 기반 게임 루프 (모바일 고주사율 60fps 캡) ──
-    const _fMin=_isMob?1000/60:0;
-    let _lastT=0;
+    // ── rAF 기반 60fps 게임 루프 ──
     const gameLoop=(now:number)=>{
       rafRef.current=requestAnimationFrame(gameLoop);
-      if(_isMob&&now-_lastT<_fMin) return;
-      _lastT=now;
       frameCountRef.current++;
 
       if(canvas.width!==container.clientWidth||canvas.height!==container.clientHeight){
@@ -837,7 +833,7 @@ const MathSlingshot: React.FC = () => {
       const lm=latestLandmarks.current;
 
       // 손 랜드마크 그리기 (offscreen에서 복사한 프레임 위에)
-      if(!_isMob&&lm&&window.drawConnectors&&window.drawLandmarks){
+      if(lm&&window.drawConnectors&&window.drawLandmarks){
         ctx.save();
         ctx.globalAlpha=0.45;
         ctx.translate(canvas.width,0); ctx.scale(-1,1);
@@ -978,7 +974,7 @@ const MathSlingshot: React.FC = () => {
               ballVel.current.x*=-1;
               ballPos.current.x=Math.max(BUBBLE_RADIUS,Math.min(canvas.width-BUBBLE_RADIUS,ballPos.current.x));
             }
-            if(ballPos.current.y<getGridTopPadding(canvas.width)+BUBBLE_RADIUS){hit=true;break;}
+            if(ballPos.current.y<GRID_TOP_PADDING+BUBBLE_RADIUS){hit=true;break;}
             const bpx=ballPos.current.x, bpy=ballPos.current.y;
             const collR2=Math.pow(BUBBLE_RADIUS*1.9,2);
             for(const b of activeBubbles){
@@ -1023,7 +1019,7 @@ const MathSlingshot: React.FC = () => {
               }
             }
             // 천장 row(0)도 후보에 추가 (첫 줄 착지용)
-            if(activeBubbles.length===0||ballPos.current.y<getGridTopPadding(canvas.width)+BUBBLE_RADIUS*4){
+            if(activeBubbles.length===0||ballPos.current.y<GRID_TOP_PADDING+BUBBLE_RADIUS*4){
               const cols0=GRID_COLS;
               for(let c=0;c<cols0;c++){
                 const key=`0_${c}`;
@@ -1101,7 +1097,7 @@ const MathSlingshot: React.FC = () => {
         const slY=canvas.height-SLINGSHOT_BOTTOM_OFFSET-BUBBLE_RADIUS*2;
         ctx.save();
         ctx.beginPath(); ctx.moveTo(0,slY);
-        for(let wx=0;wx<=canvas.width;wx+=24) ctx.lineTo(wx,slY+Math.sin(wx/28+waveOffsetRef.current)*3.5);
+        for(let wx=0;wx<=canvas.width;wx+=12) ctx.lineTo(wx,slY+Math.sin(wx/28+waveOffsetRef.current)*3.5);
         ctx.strokeStyle='rgba(80,160,255,0.55)'; ctx.lineWidth=2;
         ctx.stroke(); ctx.restore();
       }
@@ -1130,7 +1126,7 @@ const MathSlingshot: React.FC = () => {
             let ex=sx,ey=sy;
             for(let s=1;s<=steps;s++){
               const rx=sx+vx*stepSize*s, ry=sy+vy*stepSize*s;
-              if(ry<getGridTopPadding(canvas.width)+BUBBLE_RADIUS) return {ex:rx,ey:ry,hit:true,wallHit:false};
+              if(ry<GRID_TOP_PADDING+BUBBLE_RADIUS) return {ex:rx,ey:ry,hit:true,wallHit:false};
               if(rx<BUBBLE_RADIUS||rx>canvas.width-BUBBLE_RADIUS){
                 return {ex:rx,ey:ry,hit:false,wallHit:true};
               }
@@ -1197,12 +1193,10 @@ const MathSlingshot: React.FC = () => {
         for(const [color,pts] of colorGroups){
           // 같은 알파끼리 완전 배치는 불가하지만, beginPath는 한 번만
           ctx.fillStyle=color;
-          ctx.beginPath();
           for(const pt of pts){
             ctx.globalAlpha=pt.alpha;
-            ctx.moveTo(pt.x+4,pt.y); ctx.arc(pt.x,pt.y,4,0,Math.PI*2);
+            ctx.beginPath(); ctx.arc(pt.x,pt.y,pt.r,0,Math.PI*2); ctx.fill();
           }
-          ctx.fill();
         }
         ctx.globalAlpha=1.0;
       }
@@ -1217,20 +1211,13 @@ const MathSlingshot: React.FC = () => {
     // rAF 시작
     rafRef.current=requestAnimationFrame(gameLoop);
 
-    const _isMob=/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)||canvas.width<600;
-    let _hfc=0;
     if(window.Hands){
       hands=new window.Hands({locateFile:(f:string)=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`});
       hands.setOptions({maxNumHands:1,modelComplexity:0,minDetectionConfidence:.55,minTrackingConfidence:.55});
       hands.onResults(onResults);
       if(window.Camera){
         camera=new window.Camera(video,{
-          onFrame:async()=>{
-            if(!videoRef.current||!hands) return;
-            _hfc++;
-            if(_isMob&&_hfc%2!==0) return;
-            await hands.send({image:videoRef.current});
-          },
+          onFrame:async()=>{ if(videoRef.current&&hands) await hands.send({image:videoRef.current}); },
           width:640,height:480,
         });
         camera.start();
@@ -1426,7 +1413,17 @@ const MathSlingshot: React.FC = () => {
             <p className="text-xl font-bold text-white leading-tight">{score.toLocaleString()}</p>
           </div>
         </div>
-
+        <div className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest text-center border backdrop-blur-sm ${
+          isHardMode?'bg-[#ab47bc]/30 border-[#ab47bc] text-[#ab47bc]':'bg-[#66bb6a]/20 border-[#66bb6a]/50 text-[#66bb6a]'
+        }`}>
+          {isHardMode?'⚡ 하드 ×1.5':'🎨 쉬운 모드'}
+        </div>
+        {!isHardMode&&gamePhase==='playing'&&(
+          <div className="px-2.5 py-1 rounded-full text-[9px] text-center border border-[#333] backdrop-blur-sm"
+            style={{color:'#888',background:'rgba(30,30,30,0.7)'}}>
+            아래 착지 {downLandCount}/3 → 하드
+          </div>
+        )}
       </div>
 
       {/* HUD - 우측 상단 버튼들 */}
