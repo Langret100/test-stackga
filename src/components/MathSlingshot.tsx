@@ -1265,6 +1265,11 @@ const MathSlingshot: React.FC = () => {
     // rAF 시작
     rafRef.current=requestAnimationFrame(gameLoop);
 
+    // ── 카메라/MediaPipe 로딩 실패 시 fallback: 일정 시간 후 강제 로딩 해제 ──
+    // 모바일에서 window.Hands/Camera 미로드, 권한 거부, 카메라 오류 등으로
+    // onResults가 영원히 안 불릴 경우 게임 시작화면이 표시되지 않는 문제 수정
+    const loadingFallbackTimer = setTimeout(()=>{ setLoading(false); }, 5000);
+
     let _hfc=0;
     if(window.Hands){
       hands=new window.Hands({locateFile:(f:string)=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`});
@@ -1281,10 +1286,16 @@ const MathSlingshot: React.FC = () => {
           },
           width:640,height:480,
         });
-        camera.start();
+        camera.start().catch(()=>{ setLoading(false); });
+      } else {
+        // window.Camera 없으면 즉시 로딩 해제
+        setLoading(false);
       }
+    } else {
+      // window.Hands 없으면 즉시 로딩 해제
+      setLoading(false);
     }
-    return()=>{ cancelAnimationFrame(rafRef.current); if(camera) camera.stop(); if(hands) hands.close(); };
+    return()=>{ clearTimeout(loadingFallbackTimer); cancelAnimationFrame(rafRef.current); if(camera) camera.stop(); if(hands) hands.close(); };
   },[initGrid,checkMatches,dropFloatingBubbles,dequeueAndRefill]);
 
   // ── Touch events ──────────────────────────────────────────────────────────
