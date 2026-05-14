@@ -757,7 +757,7 @@ const MathSlingshot: React.FC = () => {
     ballPos.current={...anchorPos.current};
     initGrid(canvas.width);
 
-    let camera:any=null,hands:any=null;
+    let hands:any=null;
 
     // ── 웹캠 이미지를 별도 offscreen에 보관 (rAF와 분리) ──
     const camCanvas=document.createElement('canvas');
@@ -1265,37 +1265,80 @@ const MathSlingshot: React.FC = () => {
     // rAF 시작
     rafRef.current=requestAnimationFrame(gameLoop);
 
-    // ── 카메라/MediaPipe 로딩 실패 시 fallback: 일정 시간 후 강제 로딩 해제 ──
-    // 모바일에서 window.Hands/Camera 미로드, 권한 거부, 카메라 오류 등으로
-    // onResults가 영원히 안 불릴 경우 게임 시작화면이 표시되지 않는 문제 수정
-    const loadingFallbackTimer = setTimeout(()=>{ setLoading(false); }, 5000);
+    // ── 카메라/MediaPipe 초기화 (window.Camera 대신 직접 getUserMedia 사용) ──
+    // window.Camera(MediaPipe camera_utils)는 모바일 일부 기기/브라우저에서
+    // getUserMedia constraints 처리 실패, facingMode 미지정, iOS autoplay 정책 등으로
+    // 카메라가 열리지 않는 문제가 있어 직접 getUserMedia로 교체함.
+    let handRafId = 0;
+    let stream: MediaStream | null = null;
 
-    let _hfc=0;
-    if(window.Hands){
-      hands=new window.Hands({locateFile:(f:string)=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`});
+    const startCamera = async () => {
+      if(!window.Hands){ setLoading(false); return; }
+
+      hands = new window.Hands({locateFile:(f:string)=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`});
       hands.setOptions({maxNumHands:1,modelComplexity:0,minDetectionConfidence:.55,minTrackingConfidence:.55});
       hands.onResults(onResults);
-      if(window.Camera){
-        camera=new window.Camera(video,{
-          onFrame:async()=>{
-            if(!videoRef.current||!hands) return;
-            _hfc++;
-            if(_isMob&&_hfc%3!==0) return;
-            // setTimeout(0)으로 게임루프 프레임과 분리 → 메인스레드 블로킹 방지
-            setTimeout(()=>{ hands.send({image:videoRef.current!}); }, 0);
-          },
-          width:640,height:480,
-        });
-        camera.start().catch(()=>{ setLoading(false); });
-      } else {
-        // window.Camera 없으면 즉시 로딩 해제
-        setLoading(false);
+
+      // MediaPipe Hands 초기화 완료 대기 (initialize() 있으면 호출)
+      try { if(hands.initialize) await hands.initialize(); } catch(_){}
+
+      // 직접 getUserMedia로 전면 카메라 열기
+      // facingMode:'user' = 전면(셀카) 카메라 — 손 인식에 적합
+      const constraints: MediaStreamConstraints = {
+        video: {
+          facingMode: 'user',
+          width:  { ideal: 640 },
+          height: { ideal: 480 },
+        },
+        audio: false,
+      };
+
+      try {
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+      } catch(err) {
+        // 전면 카메라 실패 시 facingMode 없이 재시도 (일부 Android)
+        try { stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false }); }
+        catch(_) { setLoading(false); return; }
       }
-    } else {
-      // window.Hands 없으면 즉시 로딩 해제
-      setLoading(false);
-    }
-    return()=>{ clearTimeout(loadingFallbackTimer); cancelAnimationFrame(rafRef.current); if(camera) camera.stop(); if(hands) hands.close(); };
+
+      video.srcObject = stream;
+      // iOS Safari: muted + playsInline + autoplay 조합 필요
+      video.muted = true;
+      video.setAttribute('playsinline', '');
+      video.setAttribute('autoplay', '');
+
+      await new Promise<void>((res) => {
+        video.onloadedmetadata = () => res();
+        video.play().catch(()=>{ res(); }); // autoplay 실패해도 계속
+      });
+
+      // rAF 기반으로 프레임 직접 hands.send() — window.Camera 대체
+      let _hfc = 0;
+      const sendFrame = async () => {
+        if(!hands || video.paused || video.ended || video.readyState < 2){
+          handRafId = requestAnimationFrame(sendFrame);
+          return;
+        }
+        _hfc++;
+        // 모바일: 3프레임마다 1회 처리 (CPU 절약)
+        if(_isMob && _hfc % 3 !== 0){
+          handRafId = requestAnimationFrame(sendFrame);
+          return;
+        }
+        try { await hands.send({image: video}); } catch(_){}
+        handRafId = requestAnimationFrame(sendFrame);
+      };
+      handRafId = requestAnimationFrame(sendFrame);
+    };
+
+    startCamera();
+
+    return()=>{
+      cancelAnimationFrame(rafRef.current);
+      cancelAnimationFrame(handRafId);
+      if(stream) stream.getTracks().forEach(t => t.stop());
+      if(hands) hands.close();
+    };
   },[initGrid,checkMatches,dropFloatingBubbles,dequeueAndRefill]);
 
   // ── Touch events ──────────────────────────────────────────────────────────
@@ -1334,7 +1377,7 @@ const MathSlingshot: React.FC = () => {
     <div ref={wrapperRef} className="w-full bg-[#121212] overflow-hidden text-[#e3e3e3] relative select-none"
       style={{fontFamily:'system-ui,sans-serif',touchAction:'none',height:'100dvh'}}>
 
-      <video ref={videoRef} className="absolute hidden" playsInline/>
+      <video ref={videoRef} className="absolute hidden" playsInline muted autoPlay/>
       <canvas ref={canvasRef} className="absolute inset-0 w-full h-full"/>
       <div ref={gameContainerRef} className="absolute inset-0 pointer-events-none"/>
 
