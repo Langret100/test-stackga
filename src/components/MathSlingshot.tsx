@@ -299,6 +299,9 @@ const MathSlingshot: React.FC = () => {
   const handHoverRef        = useRef<{key:string;startT:number}|null>(null); // 손바닥 버튼 호버 추적
   const latestPinchDist     = useRef<number>(1.0);
   const latestLandmarks     = useRef<any>(null);
+  const handsRef            = useRef<any>(null); // 게임루프에서 hands.send() 호출용
+  const handSendingRef      = useRef(false);     // 중복 send 방지
+  const handFrameCountRef   = useRef(0);         // send 주기 카운터
   // 손 위치 스무딩 (EMA)
   const smoothHandPos       = useRef<Point|null>(null);
   const smoothPinchDist     = useRef<number>(1.0);
@@ -819,6 +822,16 @@ const MathSlingshot: React.FC = () => {
       _lastT=now;
       frameCountRef.current++;
 
+      // ── hands.send: 게임루프에 통합 (별도 rAF 루프 없음) ──
+      // 모바일: 3프레임마다 1회, 이전 send 처리 중이면 스킵
+      if(handsRef.current && video.readyState >= 2 && !video.paused && !handSendingRef.current){
+        handFrameCountRef.current++;
+        if(!_isMob || handFrameCountRef.current % 3 === 0){
+          handSendingRef.current = true;
+          handsRef.current.send({image: video}).catch(()=>{}).finally(()=>{ handSendingRef.current = false; });
+        }
+      }
+
       if(canvas.width!==container.clientWidth||canvas.height!==container.clientHeight){
         const cw=container.clientWidth, ch=container.clientHeight;
         canvas.width=cw; canvas.height=ch;
@@ -839,10 +852,7 @@ const MathSlingshot: React.FC = () => {
 
       ctx.clearRect(0,0,canvas.width,canvas.height);
       if(camReady){
-        // 모바일: 카메라 배경은 2프레임마다 1회만 복사 (풀스크린 drawImage 비용 절감)
-        if(!_isMob || frameCountRef.current%2===0){
-          ctx.drawImage(camCanvas,0,0,canvas.width,canvas.height);
-        }
+        ctx.drawImage(camCanvas,0,0,canvas.width,canvas.height);
         ctx.fillStyle='rgba(18,18,18,0.85)';
       } else ctx.fillStyle='#121212';
       ctx.fillRect(0,0,canvas.width,canvas.height);
@@ -1271,10 +1281,6 @@ const MathSlingshot: React.FC = () => {
     rafRef.current=requestAnimationFrame(gameLoop);
 
     // ── 카메라/MediaPipe 초기화 (window.Camera 대신 직접 getUserMedia 사용) ──
-    // window.Camera(MediaPipe camera_utils)는 모바일 일부 기기/브라우저에서
-    // getUserMedia constraints 처리 실패, facingMode 미지정, iOS autoplay 정책 등으로
-    // 카메라가 열리지 않는 문제가 있어 직접 getUserMedia로 교체함.
-    let handRafId = 0;
     let stream: MediaStream | null = null;
 
     const startCamera = async () => {
@@ -1284,61 +1290,40 @@ const MathSlingshot: React.FC = () => {
       hands.setOptions({maxNumHands:1,modelComplexity:0,minDetectionConfidence:.55,minTrackingConfidence:.55});
       hands.onResults(onResults);
 
-      // MediaPipe Hands 초기화 완료 대기 (initialize() 있으면 호출)
       try { if(hands.initialize) await hands.initialize(); } catch(_){}
 
-      // 직접 getUserMedia로 전면 카메라 열기
-      // facingMode:'user' = 전면(셀카) 카메라 — 손 인식에 적합
       const constraints: MediaStreamConstraints = {
-        video: {
-          facingMode: 'user',
-          width:  { ideal: 640 },
-          height: { ideal: 480 },
-        },
+        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
         audio: false,
       };
 
       try {
         stream = await navigator.mediaDevices.getUserMedia(constraints);
       } catch(err) {
-        // 전면 카메라 실패 시 facingMode 없이 재시도 (일부 Android)
         try { stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false }); }
         catch(_) { setLoading(false); return; }
       }
 
       video.srcObject = stream;
-      // iOS Safari: muted + playsInline + autoplay 조합 필요
       video.muted = true;
       video.setAttribute('playsinline', '');
       video.setAttribute('autoplay', '');
 
       await new Promise<void>((res) => {
         video.onloadedmetadata = () => res();
-        video.play().catch(()=>{ res(); }); // autoplay 실패해도 계속
+        video.play().catch(()=>{ res(); });
       });
 
-      // rAF 기반으로 프레임 직접 hands.send() — window.Camera 대체
-      // async/await 제거: hands.send()를 fire-and-forget으로 호출해
-      // 게임 rAF 루프와 메인 스레드를 공유하는 블로킹 방지
-      let _hfc = 0;
-      let _sending = false; // 이전 send가 끝나기 전에 중복 send 방지
-      const sendFrame = () => {
-        handRafId = requestAnimationFrame(sendFrame);
-        if(!hands || video.paused || video.ended || video.readyState < 2) return;
-        _hfc++;
-        if(_isMob && _hfc % 3 !== 0) return;
-        if(_sending) return; // 아직 처리 중이면 스킵
-        _sending = true;
-        hands.send({image: video}).catch(()=>{}).finally(()=>{ _sending = false; });
-      };
-      handRafId = requestAnimationFrame(sendFrame);
+      // hands.send를 별도 rAF 없이 게임루프에서 직접 호출할 수 있도록
+      // handsRef에 등록 — gameLoop 안에서 매 프레임(모바일은 3프레임마다) 호출됨
+      handsRef.current = hands;
     };
 
     startCamera();
 
     return()=>{
       cancelAnimationFrame(rafRef.current);
-      cancelAnimationFrame(handRafId);
+      handsRef.current = null;
       if(stream) stream.getTracks().forEach(t => t.stop());
       if(hands) hands.close();
     };
