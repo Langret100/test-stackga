@@ -90,10 +90,11 @@ const makeQueueItem = (): BubbleQueueItem => {
   return { answer:ans, color:ANSWER_COLOR_MAP[ans]||'red', expression:rndExpr(ans) };
 };
 
-// ─── Marble sprite cache (오프스크린 캔버스 캐시 — 색+반지름 조합당 1회 생성) ────
+// ─── Marble sprite cache (오프스크린 캔버스 캐시 — 색+반지름+expression 조합당 1회 생성) ────
+// 텍스트(수식)도 스프라이트에 합쳐 캐시 → 매 프레임 strokeText/fillText 제거
 const marbleCache = new Map<string, HTMLCanvasElement>();
-const getMarbleSprite = (r:number, color:BubbleColor, isHard:boolean): HTMLCanvasElement => {
-  const key = `${r}_${color}_${isHard?1:0}`;
+const getMarbleSprite = (r:number, color:BubbleColor, isHard:boolean, expression?:string): HTMLCanvasElement => {
+  const key = `${r}_${color}_${isHard?1:0}_${expression??''}`;
   const cached = marbleCache.get(key);
   if(cached) return cached;
 
@@ -131,6 +132,19 @@ const getMarbleSprite = (r:number, color:BubbleColor, isHard:boolean): HTMLCanva
   hg.addColorStop(0,'rgba(255,255,255,0.7)'); hg.addColorStop(1,'rgba(255,255,255,0)');
   oc2.beginPath(); oc2.arc(cx,cy,r,0,Math.PI*2); oc2.fillStyle=hg; oc2.fill();
 
+  // ── 텍스트(수식)를 스프라이트에 직접 굽기 → 매 프레임 strokeText/fillText 제거 ──
+  if(expression){
+    oc2.globalAlpha = 1.0;
+    const len = expression.length;
+    const fs = len<=2 ? r*.78 : len<=4 ? r*.60 : len<=6 ? r*.50 : r*.42;
+    oc2.textAlign = 'center'; oc2.textBaseline = 'middle';
+    oc2.font = `900 ${fs}px 'Arial Black',sans-serif`;
+    oc2.strokeStyle = `${dark}99`; oc2.lineWidth = fs*.18; oc2.lineJoin = 'round';
+    oc2.strokeText(expression, cx, cy + fs*.04);
+    oc2.fillStyle = isHard ? 'rgba(210,210,255,0.95)' : 'rgba(255,255,255,0.95)';
+    oc2.fillText(expression, cx, cy + fs*.04);
+  }
+
   marbleCache.set(key, oc);
   return oc;
 };
@@ -143,25 +157,13 @@ const drawMarble = (
   isHard:boolean,alpha=1.0,sx=0,sy=0
 ) => {
   const cx=x+sx, cy=y+sy;
-  const sprite = getMarbleSprite(r, color, isHard);
+  // expression을 캐시 키에 포함 → 텍스트 포함 스프라이트를 한 번에 drawImage
+  const sprite = getMarbleSprite(r, color, isHard, expression);
   const size = sprite.width;
 
   ctx.save();
   if(alpha<1) ctx.globalAlpha=alpha;
   ctx.drawImage(sprite, cx - size/2, cy - size/2);
-
-  // 텍스트 (매번 그려야 하지만 shadowBlur 없이)
-  const cfg = COLOR_CONFIG[color];
-  const dark = isHard ? '#2a2a44' : cfg.dark;
-  ctx.globalAlpha = alpha;
-  const len=expression.length;
-  const fs=len<=2?r*.78:len<=4?r*.60:len<=6?r*.50:r*.42;
-  ctx.textAlign='center'; ctx.textBaseline='middle';
-  ctx.font=`900 ${fs}px 'Arial Black',sans-serif`;
-  ctx.strokeStyle=`${dark}99`; ctx.lineWidth=fs*.18; ctx.lineJoin='round';
-  ctx.strokeText(expression,cx,cy+fs*.04);
-  ctx.fillStyle=isHard?'rgba(210,210,255,0.95)':'rgba(255,255,255,0.95)';
-  ctx.fillText(expression,cx,cy+fs*.04);
   ctx.restore();
 };
 
@@ -837,7 +839,10 @@ const MathSlingshot: React.FC = () => {
 
       ctx.clearRect(0,0,canvas.width,canvas.height);
       if(camReady){
-        ctx.drawImage(camCanvas,0,0,canvas.width,canvas.height);
+        // 모바일: 카메라 배경은 2프레임마다 1회만 복사 (풀스크린 drawImage 비용 절감)
+        if(!_isMob || frameCountRef.current%2===0){
+          ctx.drawImage(camCanvas,0,0,canvas.width,canvas.height);
+        }
         ctx.fillStyle='rgba(18,18,18,0.85)';
       } else ctx.fillStyle='#121212';
       ctx.fillRect(0,0,canvas.width,canvas.height);
@@ -1313,20 +1318,18 @@ const MathSlingshot: React.FC = () => {
       });
 
       // rAF 기반으로 프레임 직접 hands.send() — window.Camera 대체
+      // async/await 제거: hands.send()를 fire-and-forget으로 호출해
+      // 게임 rAF 루프와 메인 스레드를 공유하는 블로킹 방지
       let _hfc = 0;
-      const sendFrame = async () => {
-        if(!hands || video.paused || video.ended || video.readyState < 2){
-          handRafId = requestAnimationFrame(sendFrame);
-          return;
-        }
-        _hfc++;
-        // 모바일: 3프레임마다 1회 처리 (CPU 절약)
-        if(_isMob && _hfc % 3 !== 0){
-          handRafId = requestAnimationFrame(sendFrame);
-          return;
-        }
-        try { await hands.send({image: video}); } catch(_){}
+      let _sending = false; // 이전 send가 끝나기 전에 중복 send 방지
+      const sendFrame = () => {
         handRafId = requestAnimationFrame(sendFrame);
+        if(!hands || video.paused || video.ended || video.readyState < 2) return;
+        _hfc++;
+        if(_isMob && _hfc % 3 !== 0) return;
+        if(_sending) return; // 아직 처리 중이면 스킵
+        _sending = true;
+        hands.send({image: video}).catch(()=>{}).finally(()=>{ _sending = false; });
       };
       handRafId = requestAnimationFrame(sendFrame);
     };
