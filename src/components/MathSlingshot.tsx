@@ -430,6 +430,8 @@ const MathSlingshot: React.FC = () => {
     document.addEventListener('fullscreenchange', onFsChange);
     return ()=>{
       audio.pause(); audio.src='';
+      document.removeEventListener('click', tryPlay);
+      document.removeEventListener('touchstart', tryPlay);
       document.removeEventListener('fullscreenchange', onFsChange);
     };
   },[]);
@@ -763,6 +765,12 @@ const MathSlingshot: React.FC = () => {
     initGrid(canvas.width);
 
     let hands:any=null;
+
+    // effect가 정리(cleanup)된 뒤에도 진행 중이던 비동기 초기화(getUserMedia, hands.initialize)가
+    // 계속 실행되면서 그 결과(스트림/Hands 인스턴스)가 아무도 정리 안 한 채 살아남는 게
+    // "중복으로 누적"되는 원인 — React.StrictMode의 개발 모드 mount→unmount→remount에서
+    // 특히 잘 드러남. cancelled 플래그로 각 await 이후 매번 재확인해서 즉시 정리.
+    let cancelled=false;
 
     // ── 웹캠 이미지를 별도 offscreen에 보관 (rAF와 분리) ──
     const camCanvas=document.createElement('canvas');
@@ -1286,23 +1294,28 @@ const MathSlingshot: React.FC = () => {
     const startCamera = async () => {
       if(!window.Hands){ setLoading(false); return; }
 
-      hands = new window.Hands({locateFile:(f:string)=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`});
-      hands.setOptions({maxNumHands:1,modelComplexity:0,minDetectionConfidence:.55,minTrackingConfidence:.55});
-      hands.onResults(onResults);
+      const h = new window.Hands({locateFile:(f:string)=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`});
+      h.setOptions({maxNumHands:1,modelComplexity:0,minDetectionConfidence:.55,minTrackingConfidence:.55});
+      h.onResults(onResults);
 
-      try { if(hands.initialize) await hands.initialize(); } catch(_){}
+      try { if(h.initialize) await h.initialize(); } catch(_){}
+      if(cancelled){ try{h.close();}catch(_){} return; } // 그 사이 effect가 정리됐으면 바로 폐기
+      hands=h;
 
       const constraints: MediaStreamConstraints = {
         video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
         audio: false,
       };
 
+      let s: MediaStream;
       try {
-        stream = await navigator.mediaDevices.getUserMedia(constraints);
+        s = await navigator.mediaDevices.getUserMedia(constraints);
       } catch(err) {
-        try { stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false }); }
-        catch(_) { setLoading(false); return; }
+        try { s = await navigator.mediaDevices.getUserMedia({ video: true, audio: false }); }
+        catch(_) { if(!cancelled) setLoading(false); return; }
       }
+      if(cancelled){ s.getTracks().forEach(t=>t.stop()); try{h.close();}catch(_){} return; }
+      stream=s;
 
       video.srcObject = stream;
       video.muted = true;
@@ -1313,6 +1326,7 @@ const MathSlingshot: React.FC = () => {
         video.onloadedmetadata = () => res();
         video.play().catch(()=>{ res(); });
       });
+      if(cancelled){ stream.getTracks().forEach(t=>t.stop()); try{h.close();}catch(_){} return; }
 
       // hands.send를 별도 rAF 없이 게임루프에서 직접 호출할 수 있도록
       // handsRef에 등록 — gameLoop 안에서 매 프레임(모바일은 3프레임마다) 호출됨
@@ -1322,6 +1336,7 @@ const MathSlingshot: React.FC = () => {
     startCamera();
 
     return()=>{
+      cancelled=true;
       cancelAnimationFrame(rafRef.current);
       handsRef.current = null;
       if(stream) stream.getTracks().forEach(t => t.stop());
